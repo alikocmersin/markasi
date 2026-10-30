@@ -11,6 +11,7 @@ import {
   CircleHelp,
   Heart,
   Info,
+  Layers,
   LoaderCircle,
   MessageCircle,
   MapPin,
@@ -532,6 +533,22 @@ export default function Home() {
       ...Object.values(productCatalog).map((product) => product.category),
     ]),
   ).sort((left, right) => left.localeCompare(right, "tr"));
+  const coreCategoryNames = ["Fren", "Debriyaj", "Filtreler", "Motor yağları", "Balatalar", "Süspansiyon", "Aydınlatma", "Soğutma", "Elektrik", "Kaporta"];
+  const categoryNamesSet = new Set([
+    ...dynamicCategories.map((c) => c.name),
+    ...availableCategories,
+    ...coreCategoryNames,
+  ]);
+  const categoryList = Array.from(categoryNamesSet)
+    .filter((name) => name && name !== "Tüm Parçalar")
+    .map((name) => {
+      const dynamic = dynamicCategories.find((d) => d.name.toLowerCase() === name.toLowerCase());
+      return {
+        name,
+        image: dynamic?.image || categoryImages[name] || getCategorySafeImage(name),
+        description: dynamic?.description || `${name} yedek parçaları`,
+      };
+    });
   const vinIsValid = /^[A-HJ-NPR-Z0-9]{17}$/i.test(vin);
 
   const loadProducts = useCallback(async (signal?: AbortSignal) => {
@@ -1227,25 +1244,7 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-[1440px] px-4 pt-6 sm:px-8">
-        <div className="flex gap-2 overflow-x-auto rounded-2xl border border-slate-200/80 bg-white/70 p-3 shadow-sm backdrop-blur">
-          {["Fren", "Debriyaj", "Filtreler", "Motor yağları", "Balatalar"].map((cat) => (
-            <button
-              key={cat}
-              onClick={() => {
-                setSelectedCategory(cat);
-                setCurrentProductPage(1);
-                document
-                  .getElementById("vehicle-finder")
-                  ?.scrollIntoView({ behavior: "smooth", block: "start" });
-              }}
-              className="shrink-0 rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-700 transition hover:border-[#f36b2b] hover:bg-orange-50 hover:text-[#e65f26]"
-            >
-              {cat}
-            </button>
-          ))}
-        </div>
-      </section>
+
 
       <section
         id="vehicle-finder"
@@ -1538,242 +1537,167 @@ export default function Home() {
             </p>
           </div>
 
-          <div className="relative overflow-hidden bg-[#102b42] p-4 sm:p-6 lg:min-h-full hidden">
-            <div className="relative h-40 overflow-hidden rounded-2xl sm:h-48">
-              <Image
-                src="/markasi-otomotiv-banner.svg"
-                alt="Markasi Otomotiv: doğru parça, doğru araç, doğru stok"
-                fill
-                className="object-cover"
-                sizes="(max-width: 1023px) 100vw, 42vw"
-              />
-            </div>
-            <div className="mb-3 mt-5 flex items-end justify-between gap-3">
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-orange-300">
-                  Parçanı keşfet
-                </p>
-                <h2 className="mt-1 text-lg font-black tracking-tight text-white sm:text-xl">
-                  Öne çıkan kategoriler
-                </h2>
-              </div>
-              <span className="mb-0.5 shrink-0 rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-[9px] font-semibold text-slate-300">
-                Orijinal &amp; eşdeğer
-              </span>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              {(dynamicCategories.length > 0
-                ? dynamicCategories.slice(0, 8).map((c) => ({
-                    label: c.name,
-                    filter: c.name,
-                    image: c.image || "/categories/fren-sistemi.svg",
-                    description: c.description || `${c.name} yedek parçaları`,
-                  }))
-                : featuredCategories
-              ).map((category) => (
-                <button
-                  key={category.label}
-                  type="button"
-                  aria-label={`${category.label} kategorisindeki ürünleri göster`}
-                  onClick={() => selectFeaturedCategory(category.filter)}
-                  className="group relative min-h-[150px] overflow-hidden rounded-2xl border border-white/10 bg-[#183950] text-left shadow-lg transition duration-300 hover:-translate-y-1 hover:border-orange-300/70 hover:shadow-[0_16px_34px_-18px_rgba(243,107,43,0.7)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-300 motion-reduce:transition-none sm:min-h-[168px]"
-                >
-                  <img
-                    src={getCategorySafeImage(category.label, category.image)}
-                    alt={category.label}
-                    className="absolute inset-0 size-full object-cover transition duration-500 group-hover:scale-105"
-                    onError={(e) => {
-                      const target = e.currentTarget;
-                      if (!target.dataset.fallback) {
-                        target.dataset.fallback = "true";
-                        target.src = getCategorySafeImage(category.label);
-                      }
-                    }}
-                  />
-                  <span className="absolute inset-0 bg-gradient-to-t from-[#081e30] via-[#081e30]/15 to-transparent" />
-                  <span className="absolute inset-x-0 bottom-0 p-3 sm:p-3.5">
-                    <span className="block text-xs font-extrabold text-white sm:text-sm">
-                      {category.label}
-                    </span>
-                    <span className="mt-1 block text-[9px] leading-4 text-slate-200 sm:text-[10px]">
-                      {category.description}
-                    </span>
-                  </span>
-                  <span className="absolute right-2.5 top-2.5 grid size-7 place-items-center rounded-full border border-white/20 bg-[#102b42]/55 text-white opacity-0 backdrop-blur transition group-hover:opacity-100">
-                    <ArrowRight size={14} />
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
+</div>
       </section>
 
-      {/* Trust Badges */}
-      <section className="mx-auto max-w-[1440px] px-4 py-4 sm:px-8">
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <div className="flex items-center gap-3 rounded-2xl border border-slate-200/80 bg-white p-3.5 shadow-sm">
-            <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-orange-50 text-[#f36b2b]">
-              <Truck size={20} />
-            </span>
-            <div className="min-w-0">
-              <p className="text-xs font-extrabold text-slate-800">
-                {cmsSettings.badge_same_day || "Aynı Gün Kargo"}
-              </p>
-              <p className="text-[10px] text-slate-400">16:00 öncesi siparişlerde</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3 rounded-2xl border border-slate-200/80 bg-white p-3.5 shadow-sm">
-            <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-emerald-50 text-emerald-600">
-              <ShieldCheck size={20} />
-            </span>
-            <div className="min-w-0">
-              <p className="text-xs font-extrabold text-slate-800">
-                {cmsSettings.badge_original || "%100 Orijinal Parça"}
-              </p>
-              <p className="text-[10px] text-slate-400">Faturalı & garantili ürün</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3 rounded-2xl border border-slate-200/80 bg-white p-3.5 shadow-sm">
-            <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-sky-50 text-sky-600">
-              <PackageCheck size={20} />
-            </span>
-            <div className="min-w-0">
-              <p className="text-xs font-extrabold text-slate-800">
-                {cmsSettings.badge_secure_payment || "Güvenli Ödeme"}
-              </p>
-              <p className="text-[10px] text-slate-400">256-bit SSL koruması</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3 rounded-2xl border border-slate-200/80 bg-white p-3.5 shadow-sm">
-            <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-indigo-50 text-indigo-600">
-              <ArrowDownUp size={20} />
-            </span>
-            <div className="min-w-0">
-              <p className="text-xs font-extrabold text-slate-800">
-                {cmsSettings.badge_easy_return || "14 Gün Kolay İade"}
-              </p>
-              <p className="text-[10px] text-slate-400">Koşulsuz iade hakkı</p>
-            </div>
-          </div>
-        </div>
-      </section>
+      
 
       <div className="mx-auto w-full max-w-[1440px] px-5 pb-16 pt-5 sm:px-8 sm:pt-8">
         <section aria-labelledby="products-heading">
-          <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-            <h2 id="products-heading" className="scroll-mt-40 sr-only">
-              Ürün listesi
-            </h2>
-            <label className="inline-flex items-center gap-2 self-start rounded-lg border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-semibold text-slate-600 sm:self-auto">
-              <span>Sırala</span>
-              <select
-                value={sortMode}
-                onChange={(event) => {
-                  setCurrentProductPage(1);
-                  setSortMode(
-                    event.target.value as
-                      | "recommended"
-                      | "price-asc"
-                      | "price-desc"
-                      | "stock-desc",
-                  );
-                }}
-                className="h-7 bg-transparent text-xs font-semibold text-slate-700 outline-none"
-              >
-                <option value="recommended">Önerilen</option>
-                <option value="price-asc">Fiyat: artan</option>
-                <option value="price-desc">Fiyat: azalan</option>
-                <option value="stock-desc">Stok: çoktan aza</option>
-              </select>
-            </label>
-          </div>
+          <h2 id="products-heading" className="scroll-mt-40 sr-only">
+            Ürün listesi
+          </h2>
 
-          <div className="mb-3 flex items-center gap-2 overflow-x-auto pb-1">
-            <span className="shrink-0 text-[10px] font-black uppercase tracking-wider text-slate-400">Araç Markası:</span>
-            {frequentlySelectedMakes.map((make) => (
+          {/* Seçilen Araç Bilgilendirme Kartı */}
+          {vehicleReady && (
+            <div className="mb-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50/80 p-4 shadow-sm">
+              <div className="flex items-center gap-3">
+                <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-emerald-600 text-white shadow-sm">
+                  <Check size={20} />
+                </span>
+                <div>
+                  <p className="text-[11px] font-black uppercase tracking-wider text-emerald-800">
+                    Seçili Araç ile Uyumlu Parçalar
+                  </p>
+                  <p className="text-sm font-black text-slate-800">
+                    {vehicle.brand} {vehicle.model} · {vehicle.body} · {vehicle.year} · {vehicle.engine} · {vehicle.power}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 self-end sm:self-auto">
+                <button
+                  type="button"
+                  onClick={resetVehicleSelection}
+                  className="rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-600 transition hover:bg-slate-50 hover:text-red-600"
+                >
+                  Tüm Kataloğu Göster
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    document.getElementById("vehicle-finder")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                  }}
+                  className="rounded-xl bg-[#102b42] px-3.5 py-1.5 text-xs font-bold text-white transition hover:bg-[#1c405d]"
+                >
+                  Aracı Değiştir
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Resimli Parça Kategorileri Bölümü */}
+          <div className="mb-6">
+            <div className="mb-3 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Layers size={18} className="text-[#f36b2b]" />
+                <h3 className="text-sm sm:text-base font-black text-[#172a3d]">
+                  Parça Kategorileri
+                </h3>
+                {selectedCategory !== "Tüm Parçalar" && (
+                  <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-bold text-[#f36b2b]">
+                    {selectedCategory}
+                  </span>
+                )}
+              </div>
+              {selectedCategory !== "Tüm Parçalar" && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedCategory("Tüm Parçalar");
+                    setCurrentProductPage(1);
+                  }}
+                  className="text-xs font-bold text-[#f36b2b] hover:underline"
+                >
+                  Tüm Kategorileri Göster
+                </button>
+              )}
+            </div>
+
+            {/* Yatay Kaydırılabilir Resimli Kategori Kartları */}
+            <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-thin">
+              {/* Tüm Parçalar Kartı */}
               <button
-                key={make}
+                type="button"
                 onClick={() => {
-                  const makeOption = vehicleOptions[0]?.find(
-                    (opt) => opt.value.toLowerCase() === make.toLowerCase()
-                  );
-                  if (makeOption) {
-                    selectVehicleStep(0, makeOption.value);
-                    document
-                      .getElementById("vehicle-finder")
-                      ?.scrollIntoView({ behavior: "smooth", block: "start" });
-                  }
+                  setSelectedCategory("Tüm Parçalar");
+                  setCurrentProductPage(1);
                 }}
-                className="shrink-0 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-600 transition hover:border-orange-300 hover:bg-orange-50 hover:text-[#e65f26]"
+                className={`group flex min-w-[110px] sm:min-w-[125px] flex-col items-center justify-center rounded-2xl border p-2.5 text-center transition ${
+                  selectedCategory === "Tüm Parçalar"
+                    ? "border-[#f36b2b] bg-orange-50/80 shadow-md ring-2 ring-orange-200"
+                    : "border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm"
+                }`}
               >
-                {make}
+                <div
+                  className={`grid size-12 place-items-center rounded-xl mb-1.5 transition ${
+                    selectedCategory === "Tüm Parçalar"
+                      ? "bg-[#f36b2b] text-white shadow-sm"
+                      : "bg-slate-100 text-slate-600 group-hover:bg-orange-50 group-hover:text-[#f36b2b]"
+                  }`}
+                >
+                  <Box size={22} />
+                </div>
+                <span className="text-xs font-extrabold text-slate-800 line-clamp-1">Tüm Parçalar</span>
+                <span className="mt-0.5 text-[10px] text-slate-400 font-semibold">{displayedProducts.length} parça</span>
               </button>
-            ))}
+
+              {/* Resimli Kategori Kartları */}
+              {categoryList.map((cat) => {
+                const isSelected = selectedCategory === cat.name;
+                const catImg = getCategorySafeImage(cat.name, categoryImages[cat.name] || cat.image);
+                return (
+                  <button
+                    key={cat.name}
+                    type="button"
+                    onClick={() => {
+                      setSelectedCategory(cat.name);
+                      setCurrentProductPage(1);
+                    }}
+                    className={`group flex min-w-[110px] sm:min-w-[125px] flex-col items-center justify-center rounded-2xl border p-2.5 text-center transition ${
+                      isSelected
+                        ? "border-[#f36b2b] bg-orange-50/80 shadow-md ring-2 ring-orange-200"
+                        : "border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm"
+                    }`}
+                  >
+                    <div className="relative size-12 overflow-hidden rounded-xl bg-slate-50 mb-1.5 border border-slate-100 flex items-center justify-center p-1">
+                      <img
+                        src={catImg}
+                        alt={cat.name}
+                        className="size-full object-contain transition-transform duration-300 group-hover:scale-110"
+                        onError={(e) => {
+                          const target = e.currentTarget;
+                          if (!target.dataset.fallback) {
+                            target.dataset.fallback = "true";
+                            target.src = getCategorySafeImage(cat.name);
+                          }
+                        }}
+                      />
+                    </div>
+                    <span className="text-xs font-extrabold text-slate-800 line-clamp-1">{cat.name}</span>
+                    <span className="mt-0.5 text-[10px] text-slate-400 font-semibold">Parçaları Gör</span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
-          <div className="mt-3 flex items-center justify-between gap-3">
-            <button
-              type="button"
-              aria-pressed={showFavoritesOnly}
-              onClick={() => {
-                setShowFavoritesOnly((current) => !current);
-                setCurrentProductPage(1);
-                setQuery("");
-                setSubmittedQuery("");
-                setSelectedCategory("Tüm Parçalar");
-              }}
-              className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-full border px-3.5 text-xs font-bold transition ${
-                showFavoritesOnly
-                  ? "border-rose-200 bg-rose-50 text-rose-700"
-                  : "border-slate-200 bg-white text-slate-600 hover:border-rose-200 hover:text-rose-600"
-              }`}
-            >
-              <Heart
-                size={14}
-                fill={showFavoritesOnly ? "currentColor" : "none"}
-              />
-              Favorilerim
-              <span className="rounded-full bg-white/80 px-1.5 py-0.5 text-[10px]">
-                {favorites.length}
-              </span>
-            </button>
-            {showFavoritesOnly && (
-              <p className="text-right text-[10px] text-slate-500">
-                Kaydedilen parçalarınız
-              </p>
-            )}
-          </div>
-
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+          {/* Sonuç Sayacı */}
+          <div className="mt-2 mb-3 flex items-center justify-between text-xs text-slate-500">
             <p>
               {submittedQuery ? (
                 <>
-                  <strong className="text-slate-700">{submittedQuery}</strong>{" "}
-                  için {displayedProducts.length} sonuç
+                  <strong className="text-slate-700">{submittedQuery}</strong> için{" "}
+                  <span className="font-bold text-slate-800">{displayedProducts.length}</span> sonuç
                 </>
               ) : (
                 <>
-                  <strong className="text-slate-700">
-                    {displayedProducts.length}
-                  </strong>{" "}
-                  parça bulundu
+                  Toplam <span className="font-bold text-slate-800">{displayedProducts.length}</span> uyumlu parça listeleniyor
+                  {selectedCategory !== "Tüm Parçalar" && (
+                    <span className="ml-1 text-slate-400">({selectedCategory})</span>
+                  )}
                 </>
               )}
             </p>
-            <div className="flex items-center gap-3">
-              <span className="flex items-center gap-1">
-                <span className="size-2 rounded-full bg-emerald-500" /> Merkez
-                depo
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="size-2 rounded-full bg-sky-500" /> XML
-                tedarikçi
-              </span>
-              <span className="hidden items-center gap-1 md:flex">
-                <ArrowDownUp size={13} /> Stok ve teslimat
-              </span>
-            </div>
           </div>
 
           {cartStorageWarning && (
@@ -1785,14 +1709,7 @@ export default function Home() {
             </p>
           )}
 
-          {favoritesStorageWarning && (
-            <p
-              role="status"
-              className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-medium text-amber-800"
-            >
-              {favoritesStorageWarning}
-            </p>
-          )}
+
 
           {orderNotice && (
             <div className="mt-4 flex items-start justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs font-semibold text-emerald-800">
@@ -1833,11 +1750,7 @@ export default function Home() {
           {paginatedProducts.map((part) => {
                 const inCart =
                   cart.find((line) => line.productId === part.id)?.quantity ?? 0;
-                const xmlStock = part.xmlStock ?? [];
-                const xmlCount = xmlStock.reduce(
-                  (total, source) => total + source.quantity,
-                  0,
-                );
+                
                 return (
                   <article
                     key={part.id}
@@ -1922,100 +1835,10 @@ export default function Home() {
                             </p>
                           )}
                         </div>
-                        <button
-                          aria-label={
-                            favorites.includes(part.id)
-                              ? "Favorilerden çıkar"
-                              : "Favorilere ekle"
-                          }
-                          aria-pressed={favorites.includes(part.id)}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setCurrentProductPage(1);
-                            setFavorites((current) =>
-                              current.includes(part.id)
-                                ? current.filter((id) => id !== part.id)
-                                : [...current, part.id],
-                            );
-                          }}
-                          className={`grid size-8 shrink-0 place-items-center rounded-full transition hover:bg-rose-50 hover:text-rose-500 ${
-                            favorites.includes(part.id)
-                              ? "text-rose-500"
-                              : "text-slate-400"
-                          }`}
-                        >
-                          <Heart
-                            size={17}
-                            fill={
-                              favorites.includes(part.id)
-                                ? "currentColor"
-                                : "none"
-                            }
-                          />
-                        </button>
+                        
                       </div>
 
-                      {canViewCost && (
-                        <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                          <div className="rounded-xl border border-emerald-100 bg-emerald-50/60 p-3">
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="flex items-center gap-1.5 text-[11px] font-bold text-emerald-800">
-                                <Warehouse size={14} /> Merkez depo
-                              </span>
-                              <span
-                                className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                                  (part.centralStock ?? 0) > 0
-                                    ? "bg-emerald-100 text-emerald-800"
-                                    : "bg-rose-100 text-rose-700"
-                                }`}
-                              >
-                                {(part.centralStock ?? 0) > 0
-                                  ? `${part.centralStock} adet`
-                                  : "Tükendi"}
-                              </span>
-                            </div>
-                            <div className="mt-2 flex items-center justify-between text-[10px]">
-                              <span className="flex items-center gap-1 text-slate-500">
-                                <MapPin size={11} /> Raf adresi
-                              </span>
-                              <span className="font-mono font-bold text-slate-700">
-                                {part.shelf || "—"}
-                              </span>
-                            </div>
-                          </div>
-                          <div className="rounded-xl border border-sky-100 bg-sky-50/60 p-3">
-                            <div className="mb-1.5 flex items-center justify-between">
-                              <span className="flex items-center gap-1.5 text-[11px] font-bold text-sky-800">
-                                <Truck size={14} /> XML tedarikçi stoğu
-                              </span>
-                              <span className="text-[10px] text-slate-500">
-                                {xmlCount} adet
-                              </span>
-                            </div>
-                            {xmlStock.length > 0 ? (
-                              <div className="space-y-1">
-                                {xmlStock.map((source) => (
-                                  <div
-                                    key={source.supplier}
-                                    className="flex items-center justify-between gap-2 text-[10px]"
-                                  >
-                                    <span className="truncate text-slate-600">
-                                      {source.supplier}
-                                    </span>
-                                    <span className="shrink-0 font-semibold text-slate-700">
-                                      {source.quantity} adet · {source.delivery}
-                                    </span>
-                                  </div>
-                                ))}
-                              </div>
-                            ) : (
-                              <p className="text-[10px] text-slate-500">
-                                Tedarikçi stoğu yok
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                      )}
+                      
 
                       <div className="mt-4 flex flex-wrap items-end justify-between gap-3 border-t border-slate-100 pt-4">
                         <div>
@@ -2159,10 +1982,8 @@ export default function Home() {
             <div className="mt-4 rounded-2xl border border-dashed border-slate-300 bg-white px-5 py-12 text-center">
               <Search size={25} className="mx-auto text-slate-300" />
               <p className="mt-3 text-sm font-bold text-slate-700">
-                {showFavoritesOnly
-                  ? "Favorilerinize eklediğiniz parçalar bu filtrelerle eşleşmiyor."
-                  : vehicleReady
-                    ? `${vehicle.year} ${vehicle.brand} ${vehicle.model} için yerel katalogda eşleşen parça bulunamadı. Bu araç için ürün uyumluluk kaydı eklenmemiş olabilir.`
+                {vehicleReady
+                  ? `${vehicle.year} ${vehicle.brand} ${vehicle.model} için bu kategoride eşleşen parça bulunamadı. Lütfen diğer kategorileri inceleyin veya ustanıza danışın.`
                   : "Bu aramayla eşleşen parça bulunamadı"}
               </p>
               <p className="mt-1 text-xs text-slate-500">
@@ -2184,44 +2005,57 @@ export default function Home() {
             </div>
           )}
 
-          <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            {[
-              { title: "Aynı Gün Kargo", desc: "16:00 öncesi siparişlerde" },
-              { title: "%100 Orijinal & Faturalı Parça", desc: "Faturalı & garantili ürün" },
-              { title: "256-bit SSL Güvenli Alışveriş", desc: "256-bit SSL koruması" },
-              { title: "14 Gün Koşulsuz Kolay İade", desc: "Koşulsuz iade hakkı" },
-            ].map((item) => (
-              <div key={item.title} className="rounded-2xl border border-slate-200 bg-white p-4 text-center shadow-sm">
-                <p className="text-xs font-black text-slate-900">{item.title}</p>
-                <p className="mt-1 text-[10px] text-slate-500">{item.desc}</p>
-              </div>
-            ))}
-          </div>
-
-          <div className="mt-5 flex flex-col items-center justify-between gap-3 rounded-2xl bg-[#eaf0f5] px-5 py-4 sm:flex-row sm:px-6">
-            <div className="flex items-center gap-3">
-              <span className="grid size-10 place-items-center rounded-xl bg-white text-[#f36b2b]">
-                <PackageCheck size={20} />
-              </span>
-              <p className="text-xs leading-5 text-slate-600">
-                Kataloğunuzda bulunmayan parçaları tedarikçi XML aktarımıyla
-                ekleyebilirsiniz.
-              </p>
-            </div>
-            <Link
-              id="destek"
-              href="/admin"
-              className="inline-flex items-center gap-1.5 text-xs font-bold text-[#e65f26] hover:underline"
-            >
-              Yönetim paneline git <ChevronRight size={14} />
-            </Link>
-          </div>
         </section>
 
-        <p className="mt-4 text-[10px] leading-5 text-slate-400">
-          Başlangıç kataloğundaki ürün, fiyat ve stoklar örnek veridir. Canlıya
-          almadan önce gerçek ürün ve uyumluluk bilgilerinizi yükleyin.
-        </p>
+        {/* Sayfa Altı Güven ve Hizmet Rozetleri */}
+        <section className="mt-12 rounded-3xl border border-slate-200/80 bg-white p-6 sm:p-8 shadow-sm">
+          <div className="grid grid-cols-2 gap-4 sm:gap-6 lg:grid-cols-4">
+            <div className="flex items-center gap-3.5">
+              <span className="grid size-12 shrink-0 place-items-center rounded-2xl bg-orange-50 text-[#f36b2b]">
+                <Truck size={24} />
+              </span>
+              <div className="min-w-0">
+                <p className="text-xs sm:text-sm font-black text-slate-800">
+                  {cmsSettings.badge_same_day || "Aynı Gün Kargo"}
+                </p>
+                <p className="text-[10px] sm:text-xs text-slate-400 font-medium">16:00 öncesi siparişlerde</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3.5">
+              <span className="grid size-12 shrink-0 place-items-center rounded-2xl bg-emerald-50 text-emerald-600">
+                <ShieldCheck size={24} />
+              </span>
+              <div className="min-w-0">
+                <p className="text-xs sm:text-sm font-black text-slate-800">
+                  {cmsSettings.badge_original || "%100 Orijinal & Faturalı Parça"}
+                </p>
+                <p className="text-[10px] sm:text-xs text-slate-400 font-medium">Faturalı &amp; garantili ürün</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3.5">
+              <span className="grid size-12 shrink-0 place-items-center rounded-2xl bg-sky-50 text-sky-600">
+                <PackageCheck size={24} />
+              </span>
+              <div className="min-w-0">
+                <p className="text-xs sm:text-sm font-black text-slate-800">
+                  {cmsSettings.badge_secure_payment || "256-bit SSL Güvenli Alışveriş"}
+                </p>
+                <p className="text-[10px] sm:text-xs text-slate-400 font-medium">256-bit SSL koruması</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3.5">
+              <span className="grid size-12 shrink-0 place-items-center rounded-2xl bg-indigo-50 text-indigo-600">
+                <ArrowDownUp size={24} />
+              </span>
+              <div className="min-w-0">
+                <p className="text-xs sm:text-sm font-black text-slate-800">
+                  {cmsSettings.badge_easy_return || "14 Gün Koşulsuz Kolay İade"}
+                </p>
+                <p className="text-[10px] sm:text-xs text-slate-400 font-medium">Koşulsuz iade hakkı</p>
+              </div>
+            </div>
+          </div>
+        </section>
 
                 <footer className="mt-12 border-t border-slate-200 pt-10 text-sm text-slate-600">
           <div className="grid gap-8 pb-8 md:grid-cols-4">
