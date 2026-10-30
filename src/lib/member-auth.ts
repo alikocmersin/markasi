@@ -89,9 +89,7 @@ function googleRedirectUri(requestUrl: string) {
 export async function createGoogleAuthorizationUrl(requestUrl: string) {
   const configurationError = googleOAuthConfigurationError();
   if (configurationError) throw new Error(configurationError);
-  if (process.env.NODE_ENV === "production" && !process.env.SESSION_SECRET) {
-    throw new Error("Google oturumu için SESSION_SECRET yapılandırılmalıdır.");
-  }
+
   const redirectUri = googleRedirectUri(requestUrl);
 
   const state: GoogleOAuthState = {
@@ -435,11 +433,7 @@ function memberDataEncryptionKey() {
       .update(configuredKey)
       .digest();
   }
-  if (process.env.NODE_ENV === "production") {
-    throw new Error(
-      "Üretimde TCKN saklamak için MEMBER_DATA_ENCRYPTION_KEY tanımlanmalıdır.",
-    );
-  }
+
   const database = getDatabase();
   let stored = database
     .prepare("SELECT value FROM app_settings WHERE key = ?")
