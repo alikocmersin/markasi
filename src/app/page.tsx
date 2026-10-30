@@ -215,6 +215,39 @@ function cleanPartNumber(value: string) {
   return value.replace(/[\s-]/g, "").toUpperCase();
 }
 
+
+function normalizeSearchText(val: string): string {
+  return (val || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
+function matchCategory(productCat: string, selectedCat: string): boolean {
+  if (!selectedCat || selectedCat === "Tüm Parçalar") return true;
+  if (!productCat) return false;
+  const pNorm = normalizeSearchText(productCat);
+  const sNorm = normalizeSearchText(selectedCat);
+  if (pNorm === sNorm) return true;
+
+  if (sNorm.includes("yag")) return pNorm.includes("yag");
+  if (sNorm.includes("fren") || sNorm.includes("balata")) {
+    return pNorm.includes("fren") || pNorm.includes("balata");
+  }
+  if (sNorm.includes("debriyaj")) return pNorm.includes("debriyaj");
+  if (sNorm.includes("filtre")) return pNorm.includes("filtre");
+  if (sNorm.includes("suspansiyon") || sNorm.includes("amortis")) {
+    return pNorm.includes("suspansiyon") || pNorm.includes("amortis");
+  }
+  if (sNorm.includes("yakit")) return pNorm.includes("yakit");
+  if (sNorm.includes("motor") && !sNorm.includes("yag")) {
+    return pNorm.includes("motor") && !pNorm.includes("yag");
+  }
+
+  return pNorm.includes(sNorm) || sNorm.includes(pNorm);
+}
+
 function normalizeFitment(value: string) {
   return value
     .normalize("NFD")
@@ -533,22 +566,39 @@ export default function Home() {
       ...Object.values(productCatalog).map((product) => product.category),
     ]),
   ).sort((left, right) => left.localeCompare(right, "tr"));
-  const coreCategoryNames = ["Fren", "Debriyaj", "Filtreler", "Motor yağları", "Balatalar", "Süspansiyon", "Aydınlatma", "Soğutma", "Elektrik", "Kaporta"];
-  const categoryNamesSet = new Set([
-    ...dynamicCategories.map((c) => c.name),
-    ...availableCategories,
-    ...coreCategoryNames,
-  ]);
-  const categoryList = Array.from(categoryNamesSet)
-    .filter((name) => name && name !== "Tüm Parçalar")
-    .map((name) => {
-      const dynamic = dynamicCategories.find((d) => d.name.toLowerCase() === name.toLowerCase());
-      return {
-        name,
-        image: dynamic?.image || categoryImages[name] || getCategorySafeImage(name),
-        description: dynamic?.description || `${name} yedek parçaları`,
-      };
-    });
+    // Dynamic, DB-connected category list with real product counts
+  const allKnownCategories = Array.from(
+    new Set([
+      ...dynamicCategories.map((c) => c.name),
+      ...products.map((p) => p.category),
+    ])
+  ).filter((name) => name && name.trim() !== "" && name !== "Tüm Parçalar");
+
+  const vehicleFilteredProducts = vehicleReady
+    ? products.filter((product) => {
+        const fitment = normalizeFitment(product.fitment);
+        return (
+          fitment.includes(normalizeFitment(vehicle.brand)) &&
+          fitment.includes(normalizeFitment(vehicle.model))
+        );
+      })
+    : products;
+
+  const categoryList = allKnownCategories.map((name) => {
+    const dynamic = dynamicCategories.find(
+      (c) => c.name.toLowerCase() === name.toLowerCase()
+    );
+    const count = vehicleFilteredProducts.filter((p) =>
+      matchCategory(p.category, name)
+    ).length;
+
+    return {
+      name,
+      image: categoryImages[name] || dynamic?.image || getCategorySafeImage(name),
+      description: dynamic?.description || `${name} yedek parçaları`,
+      count,
+    };
+  });
   const vinIsValid = /^[A-HJ-NPR-Z0-9]{17}$/i.test(vin);
 
   const loadProducts = useCallback(async (signal?: AbortSignal) => {
@@ -556,9 +606,7 @@ export default function Home() {
     setProductsError("");
     const params = new URLSearchParams();
     if (submittedQuery) params.set("q", cleanPartNumber(submittedQuery));
-    if (selectedCategory !== "Tüm Parçalar") {
-      params.set("category", selectedCategory);
-    }
+// Client-side category filtering for instant responsive UI
     if (!hideCost) params.set("cost", "1");
     try {
       const response = await fetch(`/api/products?${params}`, {
@@ -602,7 +650,7 @@ export default function Home() {
     } finally {
       setLoadingProducts(false);
     }
-  }, [hideCost, selectedCategory, submittedQuery]);
+  }, [hideCost, submittedQuery]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -760,29 +808,14 @@ export default function Home() {
     (total, line) => total + line.product.price * line.quantity,
     0,
   );
-  const compatibleProducts = vehicleReady
-    ? products.filter((product) => {
-        const fitment = normalizeFitment(product.fitment);
-        return (
-          fitment.includes(normalizeFitment(vehicle.brand)) &&
-          fitment.includes(normalizeFitment(vehicle.model))
+  const categoryFilteredProducts =
+    selectedCategory === "Tüm Parçalar" || !selectedCategory
+      ? vehicleFilteredProducts
+      : vehicleFilteredProducts.filter((product) =>
+          matchCategory(product.category, selectedCategory)
         );
-      })
-    : products;
-  const sortedProducts = [...compatibleProducts].sort((left, right) => {
-    if (sortMode === "price-asc") return left.price - right.price;
-    if (sortMode === "price-desc") return right.price - left.price;
-    if (sortMode === "stock-desc") {
-      return (
-        (right.centralStock ?? Number(right.canPurchase)) -
-        (left.centralStock ?? Number(left.canPurchase))
-      );
-    }
-    return 0;
-  });
-  const displayedProducts = showFavoritesOnly
-    ? sortedProducts.filter((product) => favorites.includes(product.id))
-    : sortedProducts;
+
+  const displayedProducts = categoryFilteredProducts;
   const productPageCount = Math.ceil(displayedProducts.length / productsPerPage);
   const paginatedProducts = displayedProducts.slice(
     (currentProductPage - 1) * productsPerPage,
@@ -1192,353 +1225,7 @@ export default function Home() {
         </section>
       )}
 
-      <section className="mx-auto max-w-[1440px] px-4 pt-6 sm:px-8">
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-black tracking-tight text-[#172a3d]">Parça Kategorileri</h2>
-          <span className="text-[10px] font-semibold text-slate-400">Tüm kategoriler</span>
-        </div>
-        <div className="flex gap-4 overflow-x-auto pb-3 snap-x snap-mandatory scrollbar-hide">
-          {availableCategories.map((cat, idx) => {
-            const gradients = [
-              "from-orange-400 to-rose-500",
-              "from-sky-400 to-indigo-500",
-              "from-emerald-400 to-teal-500",
-              "from-amber-400 to-orange-500",
-              "from-violet-400 to-purple-500",
-            ];
-            const grad = gradients[idx % gradients.length];
-            return (
-              <button
-                key={cat}
-                onClick={() => {
-                  setSelectedCategory(cat);
-                  setCurrentProductPage(1);
-                  window.requestAnimationFrame(scrollToProducts);
-                }}
-                className="group relative min-w-[160px] snap-start overflow-hidden rounded-[28px] border border-white/20 bg-white shadow-lg transition duration-300 hover:-translate-y-2 hover:shadow-2xl"
-              >
-                <div className={`relative h-28 overflow-hidden bg-gradient-to-br ${grad}`}>
-                  <img
-                    src={getCategorySafeImage(cat, categoryImages[cat])}
-                    alt={cat}
-                    className="absolute inset-0 size-full object-cover opacity-90 transition duration-500 group-hover:scale-110 group-hover:opacity-100"
-                    onError={(e) => {
-                      const target = e.currentTarget;
-                      if (!target.dataset.fallback) {
-                        target.dataset.fallback = "true";
-                        target.src = getCategorySafeImage(cat);
-                      }
-                    }}
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
-                  <div className="absolute bottom-2 left-3 right-3">
-                    <p className="text-sm font-black text-white drop-shadow-lg">{cat}</p>
-                  </div>
-                </div>
-                <div className="bg-white px-3 py-2 text-center">
-                  <span className="text-[10px] font-bold text-slate-400 group-hover:text-[#f36b2b] transition">İncele →</span>
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      </section>
-
-
-
-      <section
-        id="vehicle-finder"
-        aria-labelledby="vehicle-finder-title"
-        className="scroll-mt-32 bg-[linear-gradient(135deg,#edf4fa_0%,#f8fafc_48%,#e9f1f8_100%)] px-4 py-5 sm:px-8 sm:py-8"
-      >
-        <div className="mx-auto max-w-[1440px] overflow-hidden rounded-[26px] border border-slate-200/80 bg-white shadow-[0_24px_70px_-38px_rgba(16,43,66,0.4)]">
-          <div className="p-5 sm:p-8 lg:p-9">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-orange-50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-[#e65f26]">
-                  <Wrench size={13} />
-                  Markasi Otomotiv
-                </div>
-                <h1
-                  id="vehicle-finder-title"
-                  className="text-xl font-black tracking-tight text-[#172a3d] sm:text-2xl"
-                >
-                  Aracınıza göre parça bulun
-                </h1>
-                <p className="mt-1.5 text-xs leading-5 text-slate-500 sm:text-sm">
-                  Aracınızı seçin, uyumlu ürünleri hemen görüntüleyin.
-                </p>
-              </div>
-              {vehicleReady && (
-                <span
-                  className="hidden shrink-0 items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-[11px] font-bold text-emerald-700 sm:inline-flex"
-                  title={`${vehicle.brand} ${vehicle.model} · ${vehicle.year} · ${vehicle.body} · ${vehicle.engine} · ${vehicle.power}`}
-                >
-                  <Check size={14} />
-                  Araç seçildi
-                </span>
-              )}
-            </div>
-
-            <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {vehicleStepLabels.map((label, index) => (
-              <label key={label} className="block">
-                <span className="mb-1.5 flex items-center gap-2 text-[11px] font-bold text-slate-600">
-                  <span className="grid size-6 shrink-0 place-items-center rounded-lg bg-[#102b42] text-[10px] font-extrabold text-white">
-                    {index + 1}
-                  </span>
-                  {label}
-                </span>
-                <span className="relative block">
-                  <select
-                    value={vehicleSelections[index]?.value ?? ""}
-                    onChange={(event) =>
-                      selectVehicleStep(index, event.target.value)
-                    }
-                    disabled={
-                      loadingVehicleStep === index + 1 ||
-                      (index > 0 && !vehicleSelections[index - 1]) ||
-                      vehicleOptions[index].length === 0
-                    }
-                    className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white px-3.5 pr-9 text-sm font-medium text-slate-700 outline-none transition focus:border-orange-400 focus:ring-4 focus:ring-orange-100 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
-                  >
-                    <option value="">
-                      {loadingVehicleStep === index + 1
-                        ? `${label} seçenekleri hazırlanıyor, lütfen bekleyin…`
-                        : `${label} seçin`}
-                    </option>
-                    {vehicleOptions[index].map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown
-                    size={16}
-                    className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"
-                  />
-                </span>
-              </label>
-            ))}
-            </div>
-            {vehicleCatalogError && (
-              <div
-                role="alert"
-                className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800"
-              >
-                <span>{vehicleCatalogError}</span>
-                <button
-                  type="button"
-                  onClick={() =>
-                    void loadVehicleOptions(
-                      vehicleSelections.findIndex((selection) => !selection) + 1,
-                      vehicleSelections
-                        .filter(
-                          (selection): selection is SourceVehicleOption =>
-                            selection !== null,
-                        )
-                        .map((selection) => selection.value),
-                    )
-                  }
-                  className="font-bold underline underline-offset-2"
-                >
-                  Tekrar dene
-                </button>
-              </div>
-            )}
-            <p className="mt-3 text-[10px] leading-4 text-slate-500">
-              Marka, model, kasa, yıl, motor ve güç seçenekleri yedekparca.com.tr
-              kataloğundan alınır. Seçim, ürünleri yalnızca yerel katalogdaki
-              marka/model uyum kayıtlarına göre filtreler.
-            </p>
-
-          <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            {vehicleReady ? (
-              <div className="min-w-0 text-xs font-semibold text-emerald-700">
-                {vehicle.brand} {vehicle.model} · {vehicle.body} · {vehicle.year} ·{" "}
-                {vehicle.engine} · {vehicle.power}
-                <button
-                  type="button"
-                  onClick={resetVehicleSelection}
-                  className="ml-2 font-medium text-slate-500 underline underline-offset-2 hover:text-[#e65f26]"
-                >
-                  Temizle
-                </button>
-              </div>
-            ) : (
-              <p className="text-[11px] text-slate-500">
-                {vehicleOptions[0].length
-                  ? `${vehicleOptions[0].length} marka · Marka → Model → Kasa → Yıl → Motor → Güç`
-                  : "Araç kataloğu yükleniyor…"}
-              </p>
-            )}
-            <button
-              type="button"
-              disabled={!vehicleReady}
-              onClick={scrollToProducts}
-              className="inline-flex h-11 w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-[#f36b2b] px-5 text-sm font-bold text-white transition hover:bg-[#df5b20] disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 sm:w-auto"
-            >
-              Seçilen araca göre parça bul{" "}
-              <ArrowRight size={16} />
-            </button>
-          </div>
-
-          <details className="mt-5 border-t border-slate-100 pt-4">
-            <summary className="cursor-pointer list-none text-xs font-bold text-slate-600 marker:hidden hover:text-[#e65f26]">
-              Şasi numarasıyla kontrol et
-              <span className="ml-2 text-[10px] font-medium text-slate-400">
-                (17 haneli VIN)
-              </span>
-            </summary>
-            <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
-            <div className="flex min-w-0 flex-1 items-center gap-3">
-              <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-slate-100 text-slate-600">
-                <Search size={17} />
-              </span>
-              <div className="min-w-0 flex-1">
-                <label
-                  htmlFor="vin-input"
-                  className="block text-xs font-bold text-slate-700"
-                >
-                  17 haneli şasi numaranı kontrol et
-                </label>
-                <div className="mt-1 flex min-w-0 items-center gap-2">
-                  <input
-                    id="vin-input"
-                    value={vin}
-                    maxLength={17}
-                    onChange={(event) => {
-                      setVin(
-                        event.target.value
-                          .replace(/[^a-z0-9]/gi, "")
-                          .toUpperCase(),
-                      );
-                      setVinStatus("idle");
-                      setDecodedVin(null);
-                      setVinError("");
-                    }}
-                    placeholder="Örn. WVWZZZ1KZAW000001"
-                    className="min-w-0 flex-1 bg-transparent text-xs uppercase tracking-[0.12em] text-slate-700 outline-none placeholder:normal-case placeholder:tracking-normal placeholder:text-slate-400"
-                  />
-                  <span className="shrink-0 text-[10px] text-slate-400">
-                    {vin.length}/17
-                  </span>
-                </div>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => void decodeVin()}
-              disabled={vinLoading}
-              className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 text-xs font-bold text-slate-700 transition hover:border-orange-300 hover:bg-orange-50 hover:text-orange-700"
-            >
-              {vinLoading ? (
-                <>
-                  <LoaderCircle size={14} className="animate-spin" />
-                  Sorgulanıyor
-                </>
-              ) : (
-                <>
-                  VIN ile aracı çözümle <ArrowRight size={14} />
-                </>
-              )}
-            </button>
-          </div>
-          {vinStatus !== "idle" && (
-            <p
-              role="status"
-              className={`mt-3 flex items-center gap-1.5 text-xs font-medium ${
-                vinStatus === "valid" ? "text-emerald-700" : "text-rose-600"
-              }`}
-            >
-              {vinStatus === "valid" ? (
-                <>
-                  <Check size={14} /> VIN doğrulandı; araç bilgileri aşağıda.
-                </>
-              ) : (
-                <>
-                  <CircleHelp size={14} /> Şasi numarası 17 karakter olmalı;
-                  I, O ve Q harfleri kullanılamaz.
-                </>
-              )}
-            </p>
-          )}
-          {vinError && (
-            <p
-              role="alert"
-              className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-medium text-rose-700"
-            >
-              {vinError}
-            </p>
-          )}
-          {decodedVin && (
-            <div className="mt-3 rounded-xl border border-sky-100 bg-sky-50/70 p-4">
-              <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <h3 className="text-sm font-extrabold text-[#172a3d]">
-                  {[decodedVin.modelYear, decodedVin.make, decodedVin.model]
-                    .filter(Boolean)
-                    .join(" ")}
-                </h3>
-                <span className="text-[10px] font-semibold text-sky-800">
-                  NHTSA vPIC araç çözümleme
-                </span>
-              </div>
-              <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-[11px] sm:grid-cols-3">
-                {[
-                  ["Donanım / seri", decodedVin.trim],
-                  ["Kasa tipi", decodedVin.bodyClass],
-                  [
-                    "Motor",
-                    [
-                      decodedVin.engineModel,
-                      decodedVin.displacementL &&
-                        `${decodedVin.displacementL} L`,
-                      decodedVin.engineCylinders &&
-                        `${decodedVin.engineCylinders} silindir`,
-                    ]
-                      .filter(Boolean)
-                      .join(" · "),
-                  ],
-                  [
-                    "Güç",
-                    [
-                      decodedVin.engineHP && `${decodedVin.engineHP} HP`,
-                      decodedVin.engineKW && `${decodedVin.engineKW} kW`,
-                    ]
-                      .filter(Boolean)
-                      .join(" · "),
-                  ],
-                  ["Yakıt", decodedVin.fuelType],
-                  ["Üretim ülkesi", decodedVin.plantCountry],
-                ]
-                  .filter(([, value]) => value)
-                  .map(([label, value]) => (
-                    <div key={label}>
-                      <dt className="font-semibold text-slate-500">{label}</dt>
-                      <dd className="mt-0.5 font-bold text-slate-800">
-                        {value}
-                      </dd>
-                    </div>
-                  ))}
-              </dl>
-              <p className="mt-3 text-[10px] leading-4 text-slate-500">
-                VIN, resmi NHTSA vPIC servisine araç bilgisini çözümlemek için
-                gönderilir. Kaynak kapsamı üretici bildirimlerine dayanır ve
-                özellikle Avrupa araçlarında eksik olabilir; bu sonuç parça
-                uyumluluğu garantisi değildir.
-              </p>
-            </div>
-          )}
-          </details>
-
-            <p className="mt-4 text-[10px] leading-4 text-slate-400">
-              Katalog ve uyumluluk kayıtları mevcut ürün verilerine dayanır;
-              kesin eşleşme için ürün açıklamasını kontrol edin.
-            </p>
-          </div>
-
-</div>
-      </section>
+      
 
       
 
@@ -1638,30 +1325,29 @@ export default function Home() {
                   <Box size={22} />
                 </div>
                 <span className="text-xs font-extrabold text-slate-800 line-clamp-1">Tüm Parçalar</span>
-                <span className="mt-0.5 text-[10px] text-slate-400 font-semibold">{displayedProducts.length} parça</span>
+                <span className="mt-0.5 text-[10px] font-bold text-slate-500">{vehicleFilteredProducts.length} parça</span>
               </button>
 
               {/* Resimli Kategori Kartları */}
               {categoryList.map((cat) => {
                 const isSelected = selectedCategory === cat.name;
-                const catImg = getCategorySafeImage(cat.name, categoryImages[cat.name] || cat.image);
                 return (
                   <button
                     key={cat.name}
                     type="button"
                     onClick={() => {
-                      setSelectedCategory(cat.name);
+                      setSelectedCategory(isSelected ? "Tüm Parçalar" : cat.name);
                       setCurrentProductPage(1);
                     }}
-                    className={`group flex min-w-[110px] sm:min-w-[125px] flex-col items-center justify-center rounded-2xl border p-2.5 text-center transition ${
+                    className={`group flex min-w-[115px] sm:min-w-[130px] flex-col items-center justify-center rounded-2xl border p-3 text-center transition ${
                       isSelected
-                        ? "border-[#f36b2b] bg-orange-50/80 shadow-md ring-2 ring-orange-200"
+                        ? "border-[#f36b2b] bg-orange-50 shadow-md ring-2 ring-orange-200"
                         : "border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm"
                     }`}
                   >
-                    <div className="relative size-12 overflow-hidden rounded-xl bg-slate-50 mb-1.5 border border-slate-100 flex items-center justify-center p-1">
+                    <div className="relative size-14 overflow-hidden rounded-xl bg-slate-50 mb-2 border border-slate-100 flex items-center justify-center p-1.5">
                       <img
-                        src={catImg}
+                        src={cat.image}
                         alt={cat.name}
                         className="size-full object-contain transition-transform duration-300 group-hover:scale-110"
                         onError={(e) => {
@@ -1674,7 +1360,11 @@ export default function Home() {
                       />
                     </div>
                     <span className="text-xs font-extrabold text-slate-800 line-clamp-1">{cat.name}</span>
-                    <span className="mt-0.5 text-[10px] text-slate-400 font-semibold">Parçaları Gör</span>
+                    <span className={`mt-0.5 text-[10px] font-bold ${
+                      cat.count > 0 ? "text-emerald-700" : "text-slate-400"
+                    }`}>
+                      {cat.count} parça
+                    </span>
                   </button>
                 );
               })}
