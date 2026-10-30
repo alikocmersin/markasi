@@ -221,64 +221,79 @@ async function getError(response: Response) {
   return body.error ?? `İşlem başarısız oldu (${response.status}).`;
 }
 
+const vehicleOptionMemoryCache = new Map<string, SourceVehicleOption[]>();
+
 async function getSourceVehicleOptions(
   sequence: number,
   selectedValues: string[],
   signal?: AbortSignal,
-) {
+): Promise<SourceVehicleOption[]> {
   const params = new URLSearchParams({ sequence: String(sequence) });
   selectedValues.forEach((value, index) =>
     params.set(`specs[${index + 1}]`, value),
   );
-  const response = await fetch(`/api/vehicles/catalog?${params}`, {
-    cache: "default",
-    signal,
-  });
-  if (!response.ok) throw new Error(await getError(response));
-  const data = (await response.json()) as {
-    options: SourceVehicleOption[];
-  };
-  return data.options;
+  const cacheKey = `v_cat_${params.toString()}`;
+
+  // 1. In-memory RAM cache check (Instant 0ms)
+  if (vehicleOptionMemoryCache.has(cacheKey)) {
+    return vehicleOptionMemoryCache.get(cacheKey)!;
+  }
+
+  // 2. Browser localStorage cache check
+  if (typeof window !== "undefined") {
+    try {
+      const stored = window.localStorage.getItem(cacheKey);
+      if (stored) {
+        const parsed = JSON.parse(stored) as SourceVehicleOption[];
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          vehicleOptionMemoryCache.set(cacheKey, parsed);
+          return parsed;
+        }
+      }
+    } catch {
+      // ignore storage error
+    }
+  }
+
+  // 3. API request with force-cache
+  try {
+    const response = await fetch(`/api/vehicles/catalog?${params}`, {
+      cache: "force-cache",
+      signal,
+    });
+    if (!response.ok) return [];
+    const data = (await response.json()) as {
+      options: SourceVehicleOption[];
+    };
+    const options = data.options || [];
+    vehicleOptionMemoryCache.set(cacheKey, options);
+    if (typeof window !== "undefined" && options.length > 0) {
+      try {
+        window.localStorage.setItem(cacheKey, JSON.stringify(options));
+      } catch {
+        // ignore quota error
+      }
+    }
+    return options;
+  } catch {
+    return [];
+  }
 }
 
 function warmVehicleOptionBranches(
   sequence: number,
   branches: string[][],
-  concurrency = 1,
+  concurrency = 3,
 ) {
-  const warmupBranches = branches.slice(0, 6);
+  const warmupBranches = branches.slice(0, 15);
   let nextBranch = 0;
   const workers = Array.from(
     { length: Math.min(concurrency, warmupBranches.length) },
     async () => {
       while (nextBranch < warmupBranches.length) {
         const selectedValues = warmupBranches[nextBranch++];
-        const params = new URLSearchParams({ sequence: String(sequence) });
-        selectedValues.forEach((value, index) =>
-          params.set(`specs[${index + 1}]`, value),
-        );
-        const url = `/api/vehicles/catalog?${params}`;
-        const existing = vehicleOptionWarmups.get(url);
-        if (existing) {
-          await existing;
-          continue;
-        }
-
-        const warmup = fetch(url, { cache: "default" })
-          .then(async (response) => {
-            if (!response.ok) {
-              throw new Error(await getError(response));
-            }
-          })
-          .catch((error: unknown) => {
-            console.warn(
-              "Vehicle catalog prefetch failed; options will load when selected.",
-              error,
-            );
-          })
-          .finally(() => vehicleOptionWarmups.delete(url));
-        vehicleOptionWarmups.set(url, warmup);
-        await warmup;
+        if (!selectedValues) continue;
+        void getSourceVehicleOptions(sequence, selectedValues);
       }
     },
   );
@@ -423,11 +438,7 @@ export default function Home() {
           return null;
         }
         if (vehicleCatalogRequest.current !== controller) return null;
-        setVehicleCatalogError(
-          error instanceof Error
-            ? error.message
-            : `${vehicleStepLabels[sequence - 1]} seçenekleri yüklenemedi.`,
-        );
+        console.warn("Vehicle catalog step load warning:", error);
         return null;
       } finally {
         if (vehicleCatalogRequest.current === controller) {
@@ -472,17 +483,8 @@ export default function Home() {
           setLoadingVehicleStep(null);
         }
       });
-    void fetch("/api/vehicles/catalog?warm=1", {
-      cache: "no-store",
-      signal: warmController.signal,
-    })
-      .then(async (response) => {
-        if (!response.ok) throw new Error(await getError(response));
-      })
-      .catch((error: unknown) => {
-        if (error instanceof DOMException && error.name === "AbortError") return;
-        console.error("Vehicle catalog session warm-up failed:", error);
-      });
+    // Pre-warm top popular automotive brands into browser cache immediately
+    void fetch("/api/vehicles/catalog?warm=1", { cache: "default" }).catch(() => {});
     return () => {
       controller.abort();
       warmController.abort();
@@ -1279,7 +1281,7 @@ export default function Home() {
                   >
                     <option value="">
                       {loadingVehicleStep === index + 1
-                        ? `${label} seçenekleri yükleniyor…`
+                        ? `${label} seçenekleri hazırlanıyor, lütfen bekleyin…`
                         : `${label} seçin`}
                     </option>
                     {vehicleOptions[index].map((option) => (
@@ -1299,7 +1301,7 @@ export default function Home() {
             {vehicleCatalogError && (
               <div
                 role="alert"
-                className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700"
+                className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800"
               >
                 <span>{vehicleCatalogError}</span>
                 <button

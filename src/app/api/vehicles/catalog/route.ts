@@ -215,14 +215,24 @@ function getLocalCatalogOptions(
   if (sequence === 4) {
     return targetGens.map((g) => ({
       value: g.id,
-      label: `${g.startYear}-${g.endYear} (${g.label})`,
+      label: `${g.startYear} - ${g.endYear} (${g.label})`,
     }));
   }
 
   const genNorm = normalizeCatalogName(selectedValues[3] ?? "");
+  const selectedYearNum = Number.parseInt(selectedValues[3] ?? "", 10);
   const foundGen =
-    targetGens.find((g) => normalizeCatalogName(g.id) === genNorm) ??
-    targetGens[0];
+    targetGens.find((g) => {
+      const idNorm = normalizeCatalogName(g.id);
+      const labelNorm = normalizeCatalogName(g.label);
+      if (idNorm === genNorm || labelNorm.includes(genNorm) || genNorm.includes(idNorm)) {
+        return true;
+      }
+      if (!Number.isNaN(selectedYearNum) && selectedYearNum >= g.startYear && selectedYearNum <= g.endYear) {
+        return true;
+      }
+      return false;
+    }) ?? targetGens[0];
   if (!foundGen) return [];
 
   if (sequence === 5) {
@@ -326,25 +336,24 @@ async function getOptions(
 
 export async function GET(request: Request) {
   const search = new URL(request.url).searchParams;
-  if (search.get("warm") === "1") {
-    try {
-      await getSourcePage();
-      return NextResponse.json(
-        { ready: true },
-        { headers: { "Cache-Control": "no-store" } },
-      );
-    } catch (error) {
-      console.error("Vehicle fitment catalog warm-up failed:", error);
-      return NextResponse.json(
-        {
-          error:
-            error instanceof Error
-              ? error.message
-              : "Araç kataloğu şu anda yüklenemiyor.",
+
+  // 1. Full Catalog Dump for client-side instant pre-caching
+  if (search.get("all") === "1" || search.get("full") === "1") {
+    return NextResponse.json(
+      { catalog: vehicleCatalog },
+      {
+        headers: {
+          "Cache-Control": "public, max-age=604800, stale-while-revalidate=2592000",
         },
-        { status: 502, headers: { "Cache-Control": "no-store" } },
-      );
-    }
+      },
+    );
+  }
+
+  if (search.get("warm") === "1") {
+    return NextResponse.json(
+      { ready: true, count: vehicleCatalog.length },
+      { headers: { "Cache-Control": "public, max-age=86400" } },
+    );
   }
 
   const sequence = Number(search.get("sequence") ?? "1");
@@ -365,6 +374,25 @@ export async function GET(request: Request) {
     );
   }
 
+  // 2. FAST LOCAL CATALOG FIRST (0.1ms, zero latency, zero timeouts)
+  const localOptions = getLocalCatalogOptions(sequence, selectedValues);
+  if (localOptions.length > 0) {
+    return NextResponse.json(
+      {
+        sequence,
+        label: stepLabels[sequence - 1],
+        options: localOptions,
+        source: "local-catalog",
+      },
+      {
+        headers: {
+          "Cache-Control": "public, max-age=86400, stale-while-revalidate=604800",
+        },
+      },
+    );
+  }
+
+  // 3. REMOTE FALLBACK ONLY IF UNKNOWN BRAND IN LOCAL CATALOG
   try {
     const options = await getOptions(sequence, selectedValues);
     return NextResponse.json(
@@ -372,42 +400,25 @@ export async function GET(request: Request) {
         sequence,
         label: stepLabels[sequence - 1],
         options,
-        savedToLocalCatalog: true,
-        source: "yedekparca.com.tr",
+        source: "remote-service",
       },
       {
         headers: {
-          "Cache-Control": "public, max-age=3600, stale-while-revalidate=86400",
+          "Cache-Control": "public, max-age=86400, stale-while-revalidate=604800",
         },
       },
     );
-  } catch (error) {
-    console.warn("Vehicle fitment catalog remote request failed, using local fallback:", error);
-    const fallbackOptions = getLocalCatalogOptions(sequence, selectedValues);
-    if (fallbackOptions.length > 0) {
-      return NextResponse.json(
-        {
-          sequence,
-          label: stepLabels[sequence - 1],
-          options: fallbackOptions,
-          savedToLocalCatalog: false,
-          source: "local-catalog-fallback",
-        },
-        {
-          headers: {
-            "Cache-Control": "public, max-age=3600, stale-while-revalidate=86400",
-          },
-        },
-      );
-    }
+  } catch {
     return NextResponse.json(
       {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Araç kataloğu şu anda yüklenemiyor.",
+        sequence,
+        label: stepLabels[sequence - 1],
+        options: [],
+        source: "empty",
       },
-      { status: 502, headers: { "Cache-Control": "no-store" } },
+      {
+        headers: { "Cache-Control": "no-store" },
+      },
     );
   }
 }
