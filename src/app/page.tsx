@@ -6,13 +6,17 @@ import {
   Box,
   Check,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   CircleHelp,
   Heart,
+  Info,
   LoaderCircle,
   MessageCircle,
   MapPin,
+  Minus,
   PackageCheck,
+  Plus,
   Search,
   ShieldCheck,
   ShoppingCart,
@@ -53,6 +57,8 @@ type Part = {
   category: string;
   price: number;
   image?: string | null;
+  images?: string[];
+  description?: string;
   cost?: number;
   centralStock?: number;
   shelf?: string;
@@ -325,6 +331,9 @@ export default function Home() {
   const [dynamicCategories, setDynamicCategories] = useState<Array<{ name: string; image: string; description?: string }>>([]);
   const [selectedCategory, setSelectedCategory] = useState("Tüm Parçalar");
   const [cartAnimationId, setCartAnimationId] = useState<string | null>(null);
+  const [selectedProduct, setSelectedProduct] = useState<Part | null>(null);
+  const [activeModalImageIndex, setActiveModalImageIndex] = useState(0);
+  const [modalQuantity, setModalQuantity] = useState(1);
   const [currentProductPage, setCurrentProductPage] = useState(1);
 
   useEffect(() => {
@@ -378,6 +387,18 @@ export default function Home() {
   const [memberProfileWarning, setMemberProfileWarning] = useState("");
 
   const [cmsSettings, setCmsSettings] = useState<CmsSettings>({});
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        if (selectedProduct) setSelectedProduct(null);
+        else if (cartOpen) setCartOpen(false);
+        else if (checkoutOpen) setCheckoutOpen(false);
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedProduct, cartOpen, checkoutOpen]);
+
   const [cmsSliders, setCmsSliders] = useState<CmsSlider[]>([]);
   const [cmsPages, setCmsPages] = useState<CmsPage[]>([]);
   const [activeSliderIndex, setActiveSliderIndex] = useState(0);
@@ -873,21 +894,24 @@ export default function Home() {
     });
   }
 
-  function addToCart(product: Part) {
+  function addToCart(product: Part, quantityToAdd: number = 1) {
     if (!product.canPurchase) return;
     setOrderNotice("");
     setCart((current) => {
       const existing = current.find((line) => line.productId === product.id);
       const maximumQuantity = Math.min(product.centralStock ?? 99, 99);
-      if (existing && existing.quantity >= maximumQuantity) return current;
-      if (!existing && (maximumQuantity < 1 || current.length >= 50)) return current;
-      return existing
-        ? current.map((line) =>
-            line.productId === product.id
-              ? { ...line, quantity: line.quantity + 1 }
-              : line,
-          )
-        : [...current, { productId: product.id, quantity: 1 }];
+      if (existing) {
+        if (existing.quantity >= maximumQuantity) return current;
+        const newQty = Math.min(existing.quantity + quantityToAdd, maximumQuantity);
+        return current.map((line) =>
+          line.productId === product.id
+            ? { ...line, quantity: newQty }
+            : line,
+        );
+      }
+      if (maximumQuantity < 1 || current.length >= 50) return current;
+      const initialQty = Math.min(quantityToAdd, maximumQuantity);
+      return [...current, { productId: product.id, quantity: initialQty }];
     });
     setCartOpen(true);
   }
@@ -1817,7 +1841,12 @@ export default function Home() {
                 return (
                   <article
                     key={part.id}
-                    className="overflow-hidden rounded-2xl border border-slate-200 bg-white transition hover:border-slate-300 hover:shadow-lg hover:shadow-slate-200/50"
+                    onClick={() => {
+                      setSelectedProduct(part);
+                      setActiveModalImageIndex(0);
+                      setModalQuantity(1);
+                    }}
+                    className="group cursor-pointer overflow-hidden rounded-2xl border border-slate-200 bg-white transition-all duration-200 hover:-translate-y-0.5 hover:border-orange-300 hover:shadow-xl hover:shadow-orange-500/10"
                   >
                     <div className="p-4 sm:p-5">
                       <div className="flex gap-4">
@@ -1877,7 +1906,7 @@ export default function Home() {
                                 : "Tükendi"}
                             </span>
                           </div>
-                          <h3 className="mt-1 text-sm font-extrabold text-[#172a3d] sm:text-base">
+                          <h3 className="mt-1 text-sm font-extrabold text-[#172a3d] transition group-hover:text-[#f36b2b] sm:text-base">
                             {part.name}
                           </h3>
                           <p className="mt-1 text-xs text-slate-500">
@@ -1900,7 +1929,8 @@ export default function Home() {
                               : "Favorilere ekle"
                           }
                           aria-pressed={favorites.includes(part.id)}
-                          onClick={() => {
+                          onClick={(e) => {
+                            e.stopPropagation();
                             setCurrentProductPage(1);
                             setFavorites((current) =>
                               current.includes(part.id)
@@ -2005,7 +2035,8 @@ export default function Home() {
                           )}
                         </div>
                         <button
-                          onClick={() => {
+                          onClick={(e) => {
+                            e.stopPropagation();
                             addToCart(part);
                             setCartAnimationId(part.id);
                             window.setTimeout(() => setCartAnimationId(null), 600);
@@ -2038,6 +2069,7 @@ export default function Home() {
                         href={createWhatsAppLink(part)}
                         target="_blank"
                         rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
                         aria-label={`${part.name} hakkında ustaya WhatsApp'tan sor`}
                         className="mt-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 text-xs font-bold text-emerald-800 transition hover:border-emerald-300 hover:bg-emerald-100"
                       >
@@ -2623,6 +2655,381 @@ export default function Home() {
           </section>
         </div>
       )}
+
+
+      {/* Ürün Detay Penceresi (Modal) */}
+      {selectedProduct && (() => {
+        const productImages: string[] = (
+          selectedProduct.images && selectedProduct.images.length > 0
+            ? selectedProduct.images
+            : selectedProduct.image
+            ? [selectedProduct.image]
+            : []
+        ).filter(Boolean);
+        const inCart =
+          cart.find((line) => line.productId === selectedProduct.id)?.quantity ?? 0;
+        const maxStock = Math.min(selectedProduct.centralStock ?? 99, 99);
+        const canAddMore =
+          selectedProduct.canPurchase &&
+          inCart < maxStock &&
+          maxStock > 0;
+        const activeImage =
+          productImages.length > 0
+            ? productImages[Math.min(activeModalImageIndex, productImages.length - 1)]
+            : null;
+
+        return (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-200"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="product-modal-title"
+          >
+            {/* Arka plan tıklanınca kapat */}
+            <div
+              className="absolute inset-0 cursor-default"
+              onClick={() => setSelectedProduct(null)}
+              aria-label="Pencereyi kapat"
+            />
+
+            {/* Modal Kart Gövdesi */}
+            <div className="relative z-10 flex flex-col w-full max-w-4xl max-h-[92vh] overflow-hidden rounded-3xl bg-white shadow-2xl border border-slate-100">
+              {/* Sağ Üst Kırmızı Çarpı Kapatma Butonu */}
+              <button
+                type="button"
+                onClick={() => setSelectedProduct(null)}
+                className="absolute right-4 top-4 z-30 flex size-10 items-center justify-center rounded-full bg-red-600 text-white shadow-lg transition hover:bg-red-700 hover:scale-105 active:scale-95 focus:outline-none focus:ring-4 focus:ring-red-200"
+                aria-label="Kapat"
+                title="Pencereyi Kapat (Esc)"
+              >
+                <X size={22} strokeWidth={2.5} />
+              </button>
+
+              {/* Kaydırılabilir İçerik */}
+              <div className="overflow-y-auto p-5 sm:p-8 space-y-6">
+                {/* Üst Kısım: Resimler ve Temel Bilgiler */}
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-6 lg:gap-8 items-start">
+                  
+                  {/* Sol Kolon: Resim Galerisi */}
+                  <div className="md:col-span-6 flex flex-col gap-3">
+                    <div className="relative aspect-square w-full rounded-2xl border border-slate-200 bg-slate-50 flex items-center justify-center overflow-hidden p-4 group">
+                      {activeImage ? (
+                        <img
+                          src={activeImage}
+                          alt={selectedProduct.name}
+                          className="h-full w-full object-contain transition-transform duration-300 group-hover:scale-105"
+                          onError={(e) => {
+                            e.currentTarget.style.display = "none";
+                            const fallback = e.currentTarget.parentElement?.querySelector(".modal-fallback-box");
+                            if (fallback) (fallback as HTMLElement).style.display = "flex";
+                          }}
+                        />
+                      ) : null}
+                      <div
+                        className={`modal-fallback-box size-full flex flex-col items-center justify-center text-slate-300 ${
+                          activeImage ? "hidden" : "flex"
+                        }`}
+                      >
+                        <Box size={72} strokeWidth={1.2} />
+                        <span className="mt-2 text-xs font-semibold text-slate-400">Görsel Hazırlanıyor</span>
+                      </div>
+
+                      {/* Rozetler */}
+                      <div className="absolute left-3 top-3 flex flex-wrap gap-1.5">
+                        <span
+                          className={`rounded-full px-2.5 py-1 text-[11px] font-black uppercase tracking-wider shadow-sm ${
+                            selectedProduct.kind === "OEM"
+                              ? "bg-sky-600 text-white"
+                              : "bg-amber-600 text-white"
+                          }`}
+                        >
+                          {selectedProduct.kind === "OEM" ? "Orijinal OEM" : "Eşdeğer Muadil"}
+                        </span>
+                        <span
+                          className={`rounded-full px-2.5 py-1 text-[11px] font-bold shadow-sm ${
+                            (selectedProduct.centralStock ?? 0) > 5
+                              ? "bg-emerald-600 text-white"
+                              : (selectedProduct.centralStock ?? 0) > 0
+                              ? "bg-amber-500 text-white"
+                              : "bg-rose-600 text-white"
+                          }`}
+                        >
+                          {(selectedProduct.centralStock ?? 0) > 5
+                            ? "Stokta Var"
+                            : (selectedProduct.centralStock ?? 0) > 0
+                            ? `Son ${selectedProduct.centralStock} Adet`
+                            : "Tükendi"}
+                        </span>
+                      </div>
+
+                      {/* Görsel Navigasyon Okları */}
+                      {productImages.length > 1 && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActiveModalImageIndex((prev) =>
+                                prev > 0 ? prev - 1 : productImages.length - 1
+                              );
+                            }}
+                            className="absolute left-2 top-1/2 -translate-y-1/2 flex size-8 items-center justify-center rounded-full bg-white/80 text-slate-700 shadow backdrop-blur hover:bg-white"
+                            aria-label="Önceki Görsel"
+                          >
+                            <ChevronLeft size={18} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActiveModalImageIndex((prev) =>
+                                prev < productImages.length - 1 ? prev + 1 : 0
+                              );
+                            }}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 flex size-8 items-center justify-center rounded-full bg-white/80 text-slate-700 shadow backdrop-blur hover:bg-white"
+                            aria-label="Sonraki Görsel"
+                          >
+                            <ChevronRight size={18} />
+                          </button>
+                        </>
+                      )}
+                    </div>
+
+                    {/* Küçük Resimler (Thumbnails) */}
+                    {productImages.length > 1 && (
+                      <div className="flex gap-2 overflow-x-auto pb-1">
+                        {productImages.map((imgUrl, idx) => (
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={() => setActiveModalImageIndex(idx)}
+                            className={`relative size-16 shrink-0 rounded-xl border-2 overflow-hidden bg-slate-50 transition p-1 ${
+                              activeModalImageIndex === idx
+                                ? "border-[#f36b2b] ring-2 ring-orange-200"
+                                : "border-slate-200 opacity-60 hover:opacity-100"
+                            }`}
+                          >
+                            <img
+                              src={imgUrl}
+                              alt={`Küçük Resim ${idx + 1}`}
+                              className="size-full object-contain"
+                            />
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Sağ Kolon: Başlık, Kod, Fiyat, Butonlar */}
+                  <div className="md:col-span-6 flex flex-col">
+                    <div className="flex flex-wrap items-center gap-2 text-xs">
+                      <span className="font-black uppercase tracking-wider text-[#f36b2b] bg-orange-50 px-2.5 py-1 rounded-lg">
+                        {selectedProduct.brand}
+                      </span>
+                      <span className="text-slate-400">•</span>
+                      <span className="font-semibold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-lg">
+                        {selectedProduct.category}
+                      </span>
+                    </div>
+
+                    <h2
+                      id="product-modal-title"
+                      className="mt-3 text-xl sm:text-2xl font-black text-[#172a3d] leading-snug"
+                    >
+                      {selectedProduct.name}
+                    </h2>
+
+                    <div className="mt-2.5 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                      <span>Parça Kodu / OEM:</span>
+                      <span className="font-mono font-bold text-slate-800 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md">
+                        {selectedProduct.code}
+                      </span>
+                      {selectedProduct.shelf && canViewCost && (
+                        <span className="font-mono text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md">
+                          Raf: {selectedProduct.shelf}
+                        </span>
+                      )}
+                    </div>
+
+                    {selectedProduct.fitment && (
+                      <div className="mt-4 flex items-start gap-2.5 rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 text-xs text-emerald-900">
+                        <Check size={16} className="shrink-0 text-emerald-600 mt-0.5" />
+                        <div>
+                          <p className="font-bold">Uyumlu Araç Bilgisi</p>
+                          <p className="mt-0.5 text-emerald-800">{selectedProduct.fitment}</p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Fiyat Alanı */}
+                    <div className="mt-5 rounded-2xl bg-slate-50 border border-slate-200/80 p-4">
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-3xl font-black tracking-tight text-[#172a3d]">
+                          {formatPrice(selectedProduct.price)}
+                        </span>
+                        <span className="text-xs font-semibold text-slate-400">
+                          KDV Dahil
+                        </span>
+                      </div>
+                      {!hideCost && canViewCost && selectedProduct.cost !== undefined && (
+                        <p className="mt-1 text-xs text-slate-500">
+                          Alış maliyeti:{" "}
+                          <span className="font-bold text-slate-700">
+                            {formatPrice(selectedProduct.cost)}
+                          </span>
+                        </p>
+                      )}
+                      <p className="mt-2 text-[11px] text-emerald-700 font-semibold flex items-center gap-1.5">
+                        <Truck size={14} /> Aynı gün kargo &amp; Merkez depodan hızlı teslimat
+                      </p>
+                    </div>
+
+                    {/* Adet ve Sepete Ekle / WhatsApp Butonları */}
+                    <div className="mt-5 space-y-3">
+                      <div className="flex items-center gap-3">
+                        {/* Adet seçici */}
+                        <div className="flex items-center rounded-xl border border-slate-300 bg-white p-1">
+                          <button
+                            type="button"
+                            onClick={() => setModalQuantity((q) => Math.max(1, q - 1))}
+                            disabled={modalQuantity <= 1}
+                            className="flex size-9 items-center justify-center rounded-lg text-slate-600 transition hover:bg-slate-100 disabled:opacity-30"
+                            aria-label="Adet Azalt"
+                          >
+                            <Minus size={16} />
+                          </button>
+                          <span className="w-10 text-center text-sm font-black text-slate-800">
+                            {modalQuantity}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setModalQuantity((q) =>
+                                Math.min(maxStock > 0 ? maxStock : 1, q + 1)
+                              )
+                            }
+                            disabled={modalQuantity >= maxStock}
+                            className="flex size-9 items-center justify-center rounded-lg text-slate-600 transition hover:bg-slate-100 disabled:opacity-30"
+                            aria-label="Adet Arttır"
+                          >
+                            <Plus size={16} />
+                          </button>
+                        </div>
+
+                        {/* Sepete Ekle Butonu */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            addToCart(selectedProduct, modalQuantity);
+                            setCartAnimationId(selectedProduct.id);
+                            setSelectedProduct(null);
+                          }}
+                          disabled={!canAddMore}
+                          className="flex-1 flex h-11 items-center justify-center gap-2 rounded-xl bg-[#f36b2b] px-5 text-sm font-bold text-white shadow-md shadow-orange-500/25 transition hover:bg-[#df5b20] active:scale-95 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none"
+                        >
+                          <ShoppingCart size={18} />
+                          {!selectedProduct.canPurchase || maxStock <= 0
+                            ? "Stokta Yok"
+                            : inCart >= maxStock
+                            ? "Sepetinizde Zaten Var"
+                            : modalQuantity > 1
+                            ? `Sepete Ekle (${modalQuantity} Adet)`
+                            : "Sepete Ekle"}
+                        </button>
+                      </div>
+
+                      {/* Ustaya WhatsApp'tan Sorun Butonu */}
+                      <a
+                        href={createWhatsAppLink(selectedProduct)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex h-11 w-full items-center justify-center gap-2.5 rounded-xl bg-emerald-600 px-5 text-sm font-bold text-white shadow-md shadow-emerald-600/20 transition hover:bg-emerald-700 active:scale-[0.99]"
+                      >
+                        <MessageCircle size={19} />
+                        Ustaya WhatsApp&apos;tan Sorun
+                      </a>
+                    </div>
+
+                    {/* Güven Rozetleri */}
+                    <div className="mt-4 grid grid-cols-3 gap-2 border-t border-slate-100 pt-4 text-center">
+                      <div className="flex flex-col items-center gap-1 text-[11px] text-slate-600">
+                        <ShieldCheck size={18} className="text-emerald-600" />
+                        <span className="font-semibold">%100 Uyum</span>
+                      </div>
+                      <div className="flex flex-col items-center gap-1 text-[11px] text-slate-600">
+                        <Truck size={18} className="text-sky-600" />
+                        <span className="font-semibold">Hızlı Kargo</span>
+                      </div>
+                      <div className="flex flex-col items-center gap-1 text-[11px] text-slate-600">
+                        <PackageCheck size={18} className="text-orange-600" />
+                        <span className="font-semibold">14 Gün İade</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Alt Kısım: Ürün Açıklaması ve Teknik Tablo */}
+                <div className="border-t border-slate-100 pt-6 space-y-4">
+                  <h3 className="text-base font-black text-[#172a3d] flex items-center gap-2">
+                    <Info size={18} className="text-[#f36b2b]" />
+                    Ürün Açıklaması ve Özellikleri
+                  </h3>
+                  
+                  {selectedProduct.description ? (
+                    <div className="rounded-2xl bg-slate-50 p-4 sm:p-5 text-sm text-slate-700 leading-relaxed whitespace-pre-line border border-slate-200/80">
+                      {selectedProduct.description}
+                    </div>
+                  ) : null}
+
+                  {/* Teknik Tablo */}
+                  <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                    <table className="w-full text-left text-xs">
+                      <tbody>
+                        <tr className="border-b border-slate-100 bg-slate-50/60">
+                          <td className="w-1/3 p-3 font-bold text-slate-500">Ürün Adı</td>
+                          <td className="p-3 font-semibold text-slate-800">{selectedProduct.name}</td>
+                        </tr>
+                        <tr className="border-b border-slate-100">
+                          <td className="p-3 font-bold text-slate-500">Marka</td>
+                          <td className="p-3 font-semibold text-slate-800">{selectedProduct.brand}</td>
+                        </tr>
+                        <tr className="border-b border-slate-100 bg-slate-50/60">
+                          <td className="p-3 font-bold text-slate-500">Parça / OEM Kodu</td>
+                          <td className="p-3 font-mono font-bold text-slate-800">{selectedProduct.code}</td>
+                        </tr>
+                        <tr className="border-b border-slate-100">
+                          <td className="p-3 font-bold text-slate-500">Parça Türü</td>
+                          <td className="p-3 font-semibold text-slate-800">
+                            {selectedProduct.kind === "OEM"
+                              ? "Orijinal Ekipman Üreticisi (OEM Parça)"
+                              : "Yüksek Kalite Eşdeğer Muadil Parça"}
+                          </td>
+                        </tr>
+                        <tr className="border-b border-slate-100 bg-slate-50/60">
+                          <td className="p-3 font-bold text-slate-500">Kategori</td>
+                          <td className="p-3 font-semibold text-slate-800">{selectedProduct.category}</td>
+                        </tr>
+                        {selectedProduct.fitment && (
+                          <tr className="border-b border-slate-100">
+                            <td className="p-3 font-bold text-slate-500">Uyumlu Araçlar</td>
+                            <td className="p-3 font-semibold text-slate-800">{selectedProduct.fitment}</td>
+                          </tr>
+                        )}
+                        <tr>
+                          <td className="p-3 font-bold text-slate-500">Garanti &amp; İade</td>
+                          <td className="p-3 font-semibold text-emerald-700">
+                            12 Ay Markasi Otomotiv Garantisi &amp; Koşulsuz 14 Gün İade
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       <div className="sr-only" aria-live="polite">
         {cartCount} ürün sepetinizde
