@@ -2,7 +2,7 @@ import "server-only";
 
 import Database from "better-sqlite3";
 import { randomBytes, randomUUID } from "node:crypto";
-import { mkdirSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { createOpelDemoProducts } from "@/data/opel-demo-products";
 import { vehicleCatalog } from "@/data/vehicle-catalog";
@@ -397,12 +397,29 @@ const seedProducts = [
 ];
 
 function openDatabase() {
-  const filename =
-    process.env.DATABASE_PATH ?? join(process.cwd(), "data", "markasi.sqlite");
+  const isVercel = Boolean(process.env.VERCEL || process.env.NOW_REGION);
+  let filename = process.env.DATABASE_PATH;
+
+  if (!filename) {
+    if (isVercel) {
+      filename = join("/tmp", "markasi.sqlite");
+      const seedSource = join(process.cwd(), "data", "markasi.sqlite");
+      if (!existsSync(/*turbopackIgnore: true*/ filename) && existsSync(/*turbopackIgnore: true*/ seedSource)) {
+        try {
+          copyFileSync(seedSource, filename);
+        } catch {
+          // ignore copy error
+        }
+      }
+    } else {
+      filename = join(process.cwd(), "data", "markasi.sqlite");
+    }
+  }
+
   mkdirSync(dirname(filename), { recursive: true });
 
   const database = new Database(filename);
-  database.pragma("journal_mode = WAL");
+  database.pragma(isVercel ? "journal_mode = DELETE" : "journal_mode = WAL");
   database.pragma("foreign_keys = ON");
 
   // Core Base Tables

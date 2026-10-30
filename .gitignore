@@ -34,8 +34,9 @@ yarn-error.log*
 .env*
 !.env.example
 
-# local database
-/data/
+# local database temporary WAL files
+/data/*-wal
+/data/*-shm
 
 # vercel
 .vercel
