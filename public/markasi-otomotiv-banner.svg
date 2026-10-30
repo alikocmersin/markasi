@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 600" fill="none">
+  <defs>
+    <linearGradient id="scene" x1="120" y1="0" x2="1500" y2="600" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#173E58"/>
+      <stop offset=".52" stop-color="#102B42"/>
+      <stop offset="1" stop-color="#081B2D"/>
+    </linearGradient>
+    <linearGradient id="paint" x1="920" y1="170" x2="1390" y2="430" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFB277"/>
+      <stop offset=".42" stop-color="#F36B2B"/>
+      <stop offset="1" stop-color="#BC3E19"/>
+    </linearGradient>
+    <linearGradient id="glass" x1="1080" y1="190" x2="1280" y2="340" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#B9D8E9" stop-opacity=".85"/>
+      <stop offset="1" stop-color="#4C7E9A" stop-opacity=".28"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0" cy="0" r="1" gradientTransform="matrix(430 225 -200 382 1250 287)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F36B2B" stop-opacity=".25"/>
+      <stop offset="1" stop-color="#F36B2B" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="soft-shadow" x="735" y="115" width="800" height="430" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="16"/>
+      <feOffset dy="18"/>
+      <feColorMatrix values="0 0 0 0 0.015 0 0 0 0 0.055 0 0 0 0 0.095 0 0 0 .58 0"/>
+      <feBlend in="SourceGraphic"/>
+    </filter>
+  </defs>
+  <path fill="url(#scene)" d="M0 0h1600v600H0z"/>
+  <path fill="url(#glow)" d="M0 0h1600v600H0z"/>
+  <circle cx="1372" cy="106" r="215" fill="#8CC9E9" fill-opacity=".08"/>
+  <circle cx="1326" cy="110" r="156" stroke="#B8D9E8" stroke-opacity=".12" stroke-width="2"/>
+  <circle cx="1326" cy="110" r="125" stroke="#B8D9E8" stroke-opacity=".08"/>
+  <path d="M0 468c245-90 455-77 683-26 238 54 525 22 917-83v241H0V468Z" fill="#061827" fill-opacity=".52"/>
+  <path d="M0 490c280-82 510-66 747-19 278 55 520 18 853-70" stroke="#F36B2B" stroke-opacity=".19" stroke-width="2"/>
+  <g opacity=".18" stroke="#B5D5E4">
+    <path d="M896 48v62m-31-31h62m-53-22 44 44m0-44-44 44"/>
+    <circle cx="896" cy="79" r="38"/>
+  </g>
+  <g fill="#FFB180">
+    <circle cx="802" cy="148" r="3"/><circle cx="845" cy="106" r="2"/>
+    <circle cx="1512" cy="196" r="3"/><circle cx="1457" cy="163" r="2"/>
+    <circle cx="1356" cy="491" r="3"/><circle cx="917" cy="411" r="2"/>
+  </g>
+  <g transform="translate(78 82)">
+    <rect width="54" height="54" rx="16" fill="#F36B2B"/>
+    <path d="m10 37 7-22h7l5 13 5-13h7l7 22h-7l-4-12-5 13h-6l-5-13-4 12h-7Z" fill="#fff"/>
+    <path d="m17 15 12 21 12-21" stroke="#FFD0AE" stroke-width="1.3"/>
+    <text x="70" y="25" fill="#fff" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="800" letter-spacing="2">MARKASİ OTOMOTİV</text>
+    <text x="72" y="49" fill="#9DB8C9" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="700" letter-spacing="4">HER PARÇADA GÜVEN</text>
+  </g>
+  <text x="80" y="250" fill="#FFB180" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="700" letter-spacing="4">GÜVENİLİR PARÇA, GÜVENLİ YOL</text>
+  <text x="76" y="317" fill="#fff" font-family="Arial, Helvetica, sans-serif" font-size="51" font-weight="800" letter-spacing="-2">Doğru parça.</text>
+  <text x="76" y="375" fill="#fff" font-family="Arial, Helvetica, sans-serif" font-size="51" font-weight="800" letter-spacing="-2">Her yolculukta güven.</text>
+  <text x="80" y="414" fill="#C5D5E0" font-family="Arial, Helvetica, sans-serif" font-size="17">Aracına uyumlu oto yedek parça, tek noktada.</text>
+  <g font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="700" letter-spacing=".4">
+    <rect x="80" y="448" width="154" height="36" rx="18" fill="#fff" fill-opacity=".09" stroke="#fff" stroke-opacity=".14"/>
+    <circle cx="98" cy="466" r="4" fill="#7BE0AE"/>
+    <text x="111" y="470" fill="#E8F0F5">MERKEZ DEPO STOKU</text>
+    <rect x="246" y="448" width="153" height="36" rx="18" fill="#fff" fill-opacity=".09" stroke="#fff" stroke-opacity=".14"/>
+    <path d="M264 462h12m-12 8h12" stroke="#FFB180" stroke-width="2" stroke-linecap="round"/>
+    <text x="283" y="470" fill="#E8F0F5">XML TEDARİK AĞI</text>
+  </g>
+  <g filter="url(#soft-shadow)">
+    <path d="m848 363 35-82c16-38 48-67 88-79l79-23c23-7 47-8 71-2l110 27c22 5 41 16 57 32l82 80c18 17 28 41 28 66v37c0 18-14 32-32 32h-35c-5-48-45-84-93-84s-88 36-93 84h-250c-5-48-45-84-93-84-48 0-88 36-93 84h-20c-18 0-32-14-32-32v-18c0-15 9-29 24-35l37-14Z" fill="url(#paint)"/>
+    <path d="m919 280 26-59c10-23 30-40 54-47l56-17-2 123H919Z" fill="url(#glass)" stroke="#FFD3B8" stroke-opacity=".72" stroke-width="4"/>
+    <path d="m1072 175 43-12c18-5 37-6 55-2l83 21c16 4 30 12 42 23l70 68h-293V175Z" fill="url(#glass)" stroke="#FFD3B8" stroke-opacity=".72" stroke-width="4"/>
+    <path d="M1071 173v102m-154 8h474" stroke="#9D3E24" stroke-opacity=".5" stroke-width="5"/>
+    <path d="M841 350h67m482 0h53" stroke="#FFD5BF" stroke-width="10" stroke-linecap="round"/>
+    <path d="M889 392c5-45 42-79 88-79 45 0 83 34 88 79m155 0c5-45 42-79 88-79 45 0 83 34 88 79" stroke="#071827" stroke-width="15"/>
+    <circle cx="977" cy="394" r="42" fill="#102B42" stroke="#DCE8ED" stroke-width="7"/>
+    <circle cx="977" cy="394" r="18" fill="#F36B2B" stroke="#FFCFB1" stroke-width="5"/>
+    <circle cx="1308" cy="394" r="42" fill="#102B42" stroke="#DCE8ED" stroke-width="7"/>
+    <circle cx="1308" cy="394" r="18" fill="#F36B2B" stroke="#FFCFB1" stroke-width="5"/>
+    <path d="M891 289h33m-42 17h27" stroke="#FFE0CB" stroke-width="6" stroke-linecap="round"/>
+  </g>
+  <g transform="translate(1411 371)">
+    <circle r="49" fill="#12364E" stroke="#F36B2B" stroke-opacity=".66" stroke-width="2"/>
+    <circle r="37" fill="#173F58" stroke="#A8C4D3" stroke-opacity=".48" stroke-width="2"/>
+    <circle r="22" fill="#F36B2B"/>
+    <path d="M-9-13h7l4 9 4-9h7L4 13h-4L-9-13Z" fill="#fff"/>
+    <path d="M-48 0h-19m115 0h19M0-48v-19M0 67V48" stroke="#9CB8C9" stroke-opacity=".7" stroke-width="3" stroke-linecap="round"/>
+  </g>
+</svg>

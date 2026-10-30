@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 420" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="30" x2="640" y2="390" gradientUnits="userSpaceOnUse"><stop stop-color="#204B66"/><stop offset="1" stop-color="#102B42"/></linearGradient>
+    <linearGradient id="plate" x1="181" y1="68" x2="417" y2="334" gradientUnits="userSpaceOnUse"><stop stop-color="#F3F5F5"/><stop offset=".28" stop-color="#8295A1"/><stop offset=".5" stop-color="#E0E6E9"/><stop offset=".78" stop-color="#748894"/><stop offset="1" stop-color="#CFD8DD"/></linearGradient>
+    <linearGradient id="clutch" x1="158" y1="97" x2="443" y2="325" gradientUnits="userSpaceOnUse"><stop stop-color="#FFB278"/><stop offset=".42" stop-color="#F36B2B"/><stop offset="1" stop-color="#B9401D"/></linearGradient>
+    <filter id="shadow" x="106" y="51" width="432" height="371" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feGaussianBlur in="SourceAlpha" stdDeviation="13"/><feOffset dy="14"/><feColorMatrix values="0 0 0 0 .02 0 0 0 .06 0 0 0 0 .1 0 0 0 .5 0"/><feBlend in="SourceGraphic"/></filter>
+  </defs>
+  <path fill="url(#bg)" d="M0 0h640v420H0z"/>
+  <circle cx="320" cy="205" r="183" fill="#86B5CC" fill-opacity=".08"/>
+  <path d="M0 363c186-62 419-47 640-121v178H0V363Z" fill="#081D2E" fill-opacity=".65"/>
+  <g filter="url(#shadow)">
+    <circle cx="314" cy="202" r="129" fill="url(#plate)" stroke="#F5F7F8" stroke-opacity=".55" stroke-width="8"/>
+    <circle cx="314" cy="202" r="103" stroke="#4E6878" stroke-width="8"/>
+    <circle cx="314" cy="202" r="77" fill="#173A50" stroke="url(#clutch)" stroke-width="16"/>
+    <circle cx="314" cy="202" r="47" fill="url(#plate)" stroke="#E8EEF0" stroke-width="7"/>
+    <circle cx="314" cy="202" r="21" fill="#F36B2B" stroke="#FFE0CB" stroke-width="6"/>
+    <g fill="#294A5C" stroke="#DCE5E9" stroke-width="3">
+      <circle cx="314" cy="98" r="8"/><circle cx="387" cy="128" r="8"/>
+      <circle cx="416" cy="202" r="8"/><circle cx="387" cy="276" r="8"/>
+      <circle cx="314" cy="306" r="8"/><circle cx="240" cy="276" r="8"/>
+      <circle cx="211" cy="202" r="8"/><circle cx="240" cy="128" r="8"/>
+    </g>
+    <g stroke="#FFCFAD" stroke-width="7" stroke-linecap="round">
+      <path d="M314 149v28"/><path d="M367 202h-28"/><path d="M314 255v-28"/><path d="M261 202h28"/>
+    </g>
+    <g fill="url(#clutch)" stroke="#FFE0CB" stroke-width="4">
+      <path d="m247 95 18-12 11 31-19 9-10-28Z"/>
+      <path d="m373 95 18 12-10 28-19-9 11-31Z"/>
+      <path d="m434 187 12 18-31 11-9-19 28-10Z"/>
+      <path d="m195 187 12 10-9 19-31-11 12-18Z"/>
+    </g>
+    <path d="M450 139c30 19 43 54 38 88" stroke="#FFB180" stroke-width="9" stroke-linecap="round"/>
+    <path d="m478 228 10 5 8-7" stroke="#FFB180" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <path d="M108 101c26-20 57-28 91-25" stroke="#9CC5D9" stroke-opacity=".7" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="107" cy="101" r="5" fill="#FFB180"/>
+</svg>

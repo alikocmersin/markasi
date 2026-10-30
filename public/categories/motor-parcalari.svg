@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 420" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="640" y2="420" gradientUnits="userSpaceOnUse"><stop stop-color="#234E68"/><stop offset="1" stop-color="#102B42"/></linearGradient>
+    <linearGradient id="bottle" x1="235" y1="74" x2="420" y2="347" gradientUnits="userSpaceOnUse"><stop stop-color="#F5F7F5"/><stop offset=".22" stop-color="#D3DEE2"/><stop offset=".57" stop-color="#879BA4"/><stop offset="1" stop-color="#546F7D"/></linearGradient>
+    <linearGradient id="label" x1="246" y1="174" x2="407" y2="289" gradientUnits="userSpaceOnUse"><stop stop-color="#FFAE72"/><stop offset=".42" stop-color="#F36B2B"/><stop offset="1" stop-color="#C4441E"/></linearGradient>
+    <linearGradient id="cap" x1="301" y1="66" x2="369" y2="117" gradientUnits="userSpaceOnUse"><stop stop-color="#243F50"/><stop offset=".5" stop-color="#0B2233"/><stop offset="1" stop-color="#385A6E"/></linearGradient>
+    <filter id="shadow" x="156" y="39" width="361" height="382" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feGaussianBlur in="SourceAlpha" stdDeviation="13"/><feOffset dy="14"/><feColorMatrix values="0 0 0 0 .02 0 0 0 0 .06 0 0 0 0 .1 0 0 0 .55 0"/><feBlend in="SourceGraphic"/></filter>
+  </defs>
+  <path fill="url(#bg)" d="M0 0h640v420H0z"/>
+  <circle cx="326" cy="203" r="180" fill="#83B8D0" fill-opacity=".08"/>
+  <circle cx="326" cy="203" r="142" stroke="#C1D8E2" stroke-opacity=".08" stroke-width="2"/>
+  <path d="M0 361c205-59 382-40 640-117v176H0V361Z" fill="#081D2E" fill-opacity=".64"/>
+  <g filter="url(#shadow)">
+    <path d="M293 115h94l39 42c10 11 16 25 16 40v112c0 23-19 42-42 42H245c-23 0-42-19-42-42V190c0-18 8-35 22-47l31-27h37Z" fill="url(#bottle)" stroke="#EAF0F2" stroke-width="6"/>
+    <path d="M292 114V86c0-11 9-20 20-20h48c11 0 20 9 20 20v33" fill="url(#cap)" stroke="#D6E0E5" stroke-width="5"/>
+    <path d="M302 82h69m-69 12h69m-69 12h69" stroke="#91A6B1" stroke-width="4" stroke-linecap="round"/>
+    <path d="m264 117 36-30h17v49h-56l-13 12 16-31Z" fill="#D7E1E5" stroke="#F5F7F8" stroke-width="4"/>
+    <path d="M246 174h163v113H246z" fill="url(#label)"/>
+    <path d="M246 174h163v17H246z" fill="#102B42" fill-opacity=".9"/>
+    <text x="327" y="188" fill="#fff" font-family="Arial, Helvetica, sans-serif" font-size="9" font-weight="700" text-anchor="middle" letter-spacing="2">MARKASİ MOTOR</text>
+    <text x="327" y="226" fill="#fff" font-family="Arial, Helvetica, sans-serif" font-size="27" font-weight="900" text-anchor="middle" letter-spacing="1">5W—30</text>
+    <text x="327" y="247" fill="#FFF2E9" font-family="Arial, Helvetica, sans-serif" font-size="10" font-weight="700" text-anchor="middle" letter-spacing="2">FULL SYNTHETIC</text>
+    <path d="M281 268h92" stroke="#FFE0CB" stroke-opacity=".85" stroke-width="3" stroke-linecap="round"/>
+    <path d="M436 211c0-22 22-42 22-42s22 20 22 42a22 22 0 1 1-44 0Z" fill="#F36B2B" stroke="#FFD6B8" stroke-width="4"/>
+    <path d="M450 210c0-8 8-16 8-16" stroke="#FFE8DA" stroke-width="4" stroke-linecap="round"/>
+  </g>
+  <path d="M143 124c21-26 50-42 82-47" stroke="#FFB180" stroke-opacity=".8" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="143" cy="124" r="5" fill="#FFB180"/>
+  <g fill="#B9D8E6" fill-opacity=".7"><circle cx="500" cy="115" r="3"/><circle cx="518" cy="143" r="2"/><circle cx="132" cy="265" r="3"/></g>
+</svg>
