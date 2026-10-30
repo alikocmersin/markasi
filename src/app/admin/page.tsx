@@ -493,6 +493,7 @@ export default function EnterpriseAdminSuite() {
   const [cmsPages, setCmsPages] = useState<CmsPage[]>([]);
   const [selectedCmsPage, setSelectedCmsPage] = useState<CmsPage | null>(null);
   const [sliders, setSliders] = useState<SliderBanner[]>([]);
+  const [savingCmsSettings, setSavingCmsSettings] = useState(false);
 
   // 10. Security & RBAC & Audit
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
@@ -1206,6 +1207,27 @@ async function compressImageFile(file: File, maxWidth = 1000, maxHeight = 1000, 
       setCoupons(data.coupons || []);
     }
   }, []);
+
+  const handleSaveCmsSettings = async () => {
+    setSavingCmsSettings(true);
+    try {
+      const res = await fetch("/api/admin/cms", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ section: "settings", settings: siteSettings }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        showToast(err.error || "Ayarlar kaydedilemedi.", "error");
+        return;
+      }
+      showToast("Kurumsal bilgiler, vergi dairesi ve telefon ayarları başarıyla kaydedildi!");
+    } catch {
+      showToast("Bağlantı hatası oluştu.", "error");
+    } finally {
+      setSavingCmsSettings(false);
+    }
+  };
 
   const loadCms = useCallback(async () => {
     const res = await fetch("/api/admin/cms");
@@ -3709,77 +3731,297 @@ async function compressImageFile(file: File, maxWidth = 1000, maxHeight = 1000, 
         {/* ============================================================== */}
         {activeTab === "cms" && (
           <div className="space-y-6">
+            {/* ÜST BİLGİLENDİRME & KAYDET BAR */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-3xl border border-orange-200 bg-orange-50/70 p-5 shadow-sm">
+              <div className="flex items-center gap-3">
+                <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-[#f36b2b] text-white shadow-sm">
+                  <Globe size={22} />
+                </span>
+                <div>
+                  <h3 className="text-base font-black text-slate-900">
+                    Web Tasarım, Kurumsal Kimlik & İletişim Ayarları
+                  </h3>
+                  <p className="text-xs text-slate-600">
+                    Burada yapacağınız değişiklikler sitenin en üst duyuru bandı, telefon numaraları, şirket künyesi ve fatura/vergi alanlarına anında yansır.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={handleSaveCmsSettings}
+                disabled={savingCmsSettings}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#f36b2b] px-6 py-3 text-xs sm:text-sm font-black text-white hover:bg-[#df5b20] shadow-md transition disabled:opacity-50 shrink-0"
+              >
+                {savingCmsSettings ? (
+                  <>
+                    <LoaderCircle size={16} className="animate-spin" />
+                    Kaydediliyor...
+                  </>
+                ) : (
+                  <>
+                    <Save size={16} />
+                    Tüm Ayarları Kaydet ve Yayınla
+                  </>
+                )}
+              </button>
+            </div>
+
+            {/* KART 1: İLETİŞİM & TELEFON NUMARALARI */}
             <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-              <h3 className="text-sm font-black text-slate-900 flex items-center gap-2 border-b pb-4 mb-4">
-                <Globe size={16} className="text-[#f36b2b]" />
-                Web Tasarım, Kayan Duyuru Bandı & Kurumsal Kimlik
-              </h3>
+              <div className="border-b pb-4 mb-5 flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <span className="grid size-8 place-items-center rounded-xl bg-sky-50 text-sky-600">
+                    <Phone size={17} />
+                  </span>
+                  <div>
+                    <h4 className="text-sm font-black text-slate-900">İletişim & Telefon Numaraları</h4>
+                    <p className="text-[11px] text-slate-500">Sitenin en üstündeki barda ve alt iletişim alanında görünen numaralar</p>
+                  </div>
+                </div>
+              </div>
 
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 text-xs">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 text-xs">
                 <div>
-                  <label className="font-bold text-slate-600 block mb-1">Site Başlığı (Title):</label>
+                  <label className="font-bold text-slate-700 block mb-1">
+                    Sabit Telefon (En Üst Barda Görünen Tel):
+                  </label>
                   <input
                     type="text"
-                    value={siteSettings.site_title || ""}
-                    onChange={(e) => setSiteSettings({ ...siteSettings, site_title: e.target.value })}
-                    className="w-full rounded-xl border p-2"
+                    value={siteSettings.phone || ""}
+                    onChange={(e) => setSiteSettings({ ...siteSettings, phone: e.target.value })}
+                    placeholder="Örn. 0216 444 88 99 veya 0212..."
+                    className="w-full rounded-xl border border-slate-200 p-2.5 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 font-medium"
                   />
+                  <p className="mt-1 text-[10px] text-slate-400">
+                    Sitenin en üstündeki siyah/lacivert bantta "📞 [Numara]" olarak görünür.
+                  </p>
                 </div>
 
                 <div>
-                  <label className="font-bold text-slate-600 block mb-1">En Üst Kayan Duyuru Bandı Metni:</label>
+                  <label className="font-bold text-slate-700 block mb-1">
+                    Mobil Cep Telefonu:
+                  </label>
                   <input
                     type="text"
-                    value={siteSettings.site_top_announcement || ""}
-                    onChange={(e) => setSiteSettings({ ...siteSettings, site_top_announcement: e.target.value })}
-                    className="w-full rounded-xl border p-2"
+                    value={siteSettings.mobile_phone || ""}
+                    onChange={(e) => setSiteSettings({ ...siteSettings, mobile_phone: e.target.value })}
+                    placeholder="Örn. 0532 584 43 01"
+                    className="w-full rounded-xl border border-slate-200 p-2.5 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 font-medium"
                   />
+                  <p className="mt-1 text-[10px] text-slate-400">
+                    Sayfa altındaki iletişim alanında cep telefonu olarak listelenir.
+                  </p>
                 </div>
 
                 <div>
-                  <label className="font-bold text-slate-600 block mb-1">WhatsApp Destek & Şasi Numarası:</label>
+                  <label className="font-bold text-slate-700 block mb-1">
+                    WhatsApp Destek & Sipariş Numarası:
+                  </label>
                   <input
                     type="text"
                     value={siteSettings.whatsapp_number || ""}
                     onChange={(e) => setSiteSettings({ ...siteSettings, whatsapp_number: e.target.value })}
-                    className="w-full rounded-xl border p-2"
+                    placeholder="Örn. 905325844301"
+                    className="w-full rounded-xl border border-slate-200 p-2.5 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 font-medium"
                   />
+                  <p className="mt-1 text-[10px] text-slate-400">
+                    Parça detayında "Ustaya WhatsApp'tan Sorun" için kullanılır (Başında 90 olmalıdır).
+                  </p>
                 </div>
 
                 <div>
-                  <label className="font-bold text-slate-600 block mb-1">Resmi Şirket Ünvanı:</label>
+                  <label className="font-bold text-slate-700 block mb-1">
+                    Kurumsal E-Posta Adresi:
+                  </label>
                   <input
-                    type="text"
-                    value={siteSettings.company_name || ""}
-                    onChange={(e) => setSiteSettings({ ...siteSettings, company_name: e.target.value })}
-                    className="w-full rounded-xl border p-2"
+                    type="email"
+                    value={siteSettings.email || ""}
+                    onChange={(e) => setSiteSettings({ ...siteSettings, email: e.target.value })}
+                    placeholder="Örn. destek@markasioto.com"
+                    className="w-full rounded-xl border border-slate-200 p-2.5 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 font-medium"
                   />
                 </div>
 
                 <div className="sm:col-span-2">
-                  <label className="font-bold text-slate-600 block mb-1">Açık Adres:</label>
+                  <label className="font-bold text-slate-700 block mb-1">
+                    Çalışma Günleri & Saatleri:
+                  </label>
                   <input
                     type="text"
+                    value={siteSettings.working_hours || ""}
+                    onChange={(e) => setSiteSettings({ ...siteSettings, working_hours: e.target.value })}
+                    placeholder="Örn. Hafta içi: 08:30 - 18:30 | Cumartesi: 09:00 - 15:00"
+                    className="w-full rounded-xl border border-slate-200 p-2.5 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 font-medium"
+                  />
+                  <p className="mt-1 text-[10px] text-slate-400">
+                    Sayfa altında mesai ve müşteri hizmetleri saatleri olarak görüntülenir.
+                  </p>
+                </div>
+
+                <div className="sm:col-span-2 lg:col-span-3">
+                  <label className="font-bold text-slate-700 block mb-1">
+                    Google Harita / Konum Linki:
+                  </label>
+                  <input
+                    type="text"
+                    value={siteSettings.google_maps_embed || ""}
+                    onChange={(e) => setSiteSettings({ ...siteSettings, google_maps_embed: e.target.value })}
+                    placeholder="https://www.google.com/maps/..."
+                    className="w-full rounded-xl border border-slate-200 p-2.5 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 font-medium text-slate-600"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* KART 2: KURUMSAL, VERGİ & FATURA BİLGİLERİ */}
+            <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="border-b pb-4 mb-5 flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <span className="grid size-8 place-items-center rounded-xl bg-emerald-50 text-emerald-600">
+                    <FileText size={17} />
+                  </span>
+                  <div>
+                    <h4 className="text-sm font-black text-slate-900">Kurumsal, Vergi & Fatura Bilgileri</h4>
+                    <p className="text-[11px] text-slate-500">Sayfa altında (footer) çıkan şirket künyesi, Vergi Dairesi ve açık adres</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 text-xs">
+                <div className="sm:col-span-2">
+                  <label className="font-bold text-slate-700 block mb-1">
+                    Resmi Şirket Ünvanı / Firma Adı:
+                  </label>
+                  <input
+                    type="text"
+                    value={siteSettings.company_name || ""}
+                    onChange={(e) => setSiteSettings({ ...siteSettings, company_name: e.target.value })}
+                    placeholder="Örn. Markasi Otomotiv Sanayi ve Ticaret A.Ş."
+                    className="w-full rounded-xl border border-slate-200 p-2.5 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 font-medium"
+                  />
+                  <p className="mt-1 text-[10px] text-slate-400">
+                    Sayfa altındaki ana başlık ve fatura sözleşmelerinde geçerli ünvan.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">
+                    Vergi Dairesi:
+                  </label>
+                  <input
+                    type="text"
+                    value={siteSettings.tax_office || ""}
+                    onChange={(e) => setSiteSettings({ ...siteSettings, tax_office: e.target.value })}
+                    placeholder="Örn. Kadıköy V.D. veya Çukurova V.D."
+                    className="w-full rounded-xl border border-slate-200 p-2.5 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 font-bold text-emerald-800 bg-emerald-50/20"
+                  />
+                  <p className="mt-1 text-[10px] text-slate-400">
+                    Sayfa altında "Vergi Dairesi: [Buraya Yazılan]" şeklinde görüntülenir.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">
+                    Vergi Numarası / T.C. Kimlik No:
+                  </label>
+                  <input
+                    type="text"
+                    value={siteSettings.tax_number || ""}
+                    onChange={(e) => setSiteSettings({ ...siteSettings, tax_number: e.target.value })}
+                    placeholder="Örn. 6120894521"
+                    className="w-full rounded-xl border border-slate-200 p-2.5 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 font-bold text-slate-800"
+                  />
+                  <p className="mt-1 text-[10px] text-slate-400">
+                    Vergi dairesinin yanında "No: [Vergi No]" olarak listelenir.
+                  </p>
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="font-bold text-slate-700 block mb-1">
+                    Açık Firma & Mağaza Adresi:
+                  </label>
+                  <textarea
+                    rows={2}
                     value={siteSettings.address || ""}
                     onChange={(e) => setSiteSettings({ ...siteSettings, address: e.target.value })}
-                    className="w-full rounded-xl border p-2"
+                    placeholder="Örn. Yeni Sanayi Sitesi, Mehmet Nuri Arıkan Cd. No:22, Dulkadiroğlu / Kahramanmaraş"
+                    className="w-full rounded-xl border border-slate-200 p-2.5 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 font-medium"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* KART 3: SİTE BAŞLIĞI, SLOGAN & DUYURU BANDI */}
+            <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="border-b pb-4 mb-5 flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <span className="grid size-8 place-items-center rounded-xl bg-orange-50 text-[#f36b2b]">
+                    <Layers size={17} />
+                  </span>
+                  <div>
+                    <h4 className="text-sm font-black text-slate-900">Site Başlığı, Slogan & Kayan Duyuru Bandı</h4>
+                    <p className="text-[11px] text-slate-500">Tarayıcı sekme başlığı ve en üstteki duyuru bandı metinleri</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 text-xs">
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">
+                    Site Başlığı (SEO Title):
+                  </label>
+                  <input
+                    type="text"
+                    value={siteSettings.site_title || ""}
+                    onChange={(e) => setSiteSettings({ ...siteSettings, site_title: e.target.value })}
+                    placeholder="Markasi Otomotiv | Orijinal & Eşdeğer Oto Yedek Parça"
+                    className="w-full rounded-xl border border-slate-200 p-2.5 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 font-medium"
+                  />
+                </div>
+
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">
+                    Site Sloganı / Alt Açıklama:
+                  </label>
+                  <input
+                    type="text"
+                    value={siteSettings.site_slogan || ""}
+                    onChange={(e) => setSiteSettings({ ...siteSettings, site_slogan: e.target.value })}
+                    placeholder="Avrupa grubu araçların perakende yedek parça satışı."
+                    className="w-full rounded-xl border border-slate-200 p-2.5 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 font-medium"
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="font-bold text-slate-700 block mb-1">
+                    En Üst Kayan Duyuru Bandı Metni:
+                  </label>
+                  <input
+                    type="text"
+                    value={siteSettings.site_top_announcement || ""}
+                    onChange={(e) => setSiteSettings({ ...siteSettings, site_top_announcement: e.target.value })}
+                    placeholder="Saat 16:00'ya kadar verilen siparişler aynı gün kargoda! 1.500 TL üzeri ücretsiz kargo."
+                    className="w-full rounded-xl border border-slate-200 p-2.5 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 font-medium"
                   />
                 </div>
               </div>
 
-              <div className="mt-4 flex justify-end">
+              <div className="mt-6 flex justify-end border-t pt-4">
                 <button
-                  onClick={async () => {
-                    await fetch("/api/admin/cms", {
-                      method: "PATCH",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ section: "settings", settings: siteSettings }),
-                    });
-                    showToast("Site tasarım ve içerik ayarları ön yüze bağlandı!");
-                  }}
-                  className="rounded-xl bg-[#f36b2b] px-6 py-2.5 text-xs font-black text-white hover:bg-[#df5b20]"
+                  onClick={handleSaveCmsSettings}
+                  disabled={savingCmsSettings}
+                  className="inline-flex items-center gap-2 rounded-xl bg-[#f36b2b] px-6 py-2.5 text-xs font-black text-white hover:bg-[#df5b20] shadow-md transition disabled:opacity-50"
                 >
-                  Tasarım Ayarlarını Ön Yüzde Yayınla
+                  {savingCmsSettings ? (
+                    <>
+                      <LoaderCircle size={15} className="animate-spin" />
+                      Kaydediliyor...
+                    </>
+                  ) : (
+                    <>
+                      <Save size={15} />
+                      Tüm Ayarları Kaydet ve Yayınla
+                    </>
+                  )}
                 </button>
               </div>
             </div>
