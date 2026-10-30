@@ -941,12 +941,58 @@ export default function EnterpriseAdminSuite() {
     }
   };
 
+
+async function compressImageFile(file: File, maxWidth = 1000, maxHeight = 1000, quality = 0.85): Promise<File> {
+  if (typeof window === "undefined" || !file.type.startsWith("image/") || file.type.includes("svg")) {
+    return file;
+  }
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new window.Image();
+      img.onload = () => {
+        let { width, height } = img;
+        if (width <= maxWidth && height <= maxHeight && file.size < 150 * 1024) {
+          return resolve(file);
+        }
+        if (width > maxWidth || height > maxHeight) {
+          const ratio = Math.min(maxWidth / width, maxHeight / height);
+          width = Math.round(width * ratio);
+          height = Math.round(height * ratio);
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return resolve(file);
+        ctx.drawImage(img, 0, 0, width, height);
+        canvas.toBlob(
+          (blob) => {
+            if (blob && blob.size < file.size) {
+              resolve(new File([blob], file.name.replace(/\.[^.]+$/, ".webp"), { type: "image/webp" }));
+            } else {
+              resolve(file);
+            }
+          },
+          "image/webp",
+          quality
+        );
+      };
+      img.onerror = () => resolve(file);
+      img.src = e.target?.result as string;
+    };
+    reader.onerror = () => resolve(file);
+    reader.readAsDataURL(file);
+  });
+}
+
   const handleCategoryUpload = async (type: "icon" | "banner", file: File) => {
     if (!selectedCategory) return;
     setUploadingCatImg(type);
     try {
+      const optimized = await compressImageFile(file, type === "icon" ? 512 : 1200, type === "icon" ? 512 : 600, 0.9);
       const formData = new FormData();
-      formData.append("file", file);
+      formData.append("file", optimized);
       const res = await fetch("/api/upload", {
         method: "POST",
         body: formData,
@@ -972,7 +1018,8 @@ export default function EnterpriseAdminSuite() {
     try {
       const formData = new FormData();
       for (let i = 0; i < files.length; i++) {
-        formData.append("file", files[i]);
+        const optimized = await compressImageFile(files[i], 1200, 1200, 0.85);
+        formData.append("file", optimized);
       }
       const res = await fetch("/api/upload", {
         method: "POST",

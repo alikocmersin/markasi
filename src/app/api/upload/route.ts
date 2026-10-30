@@ -1,5 +1,5 @@
 import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname, extname, join } from "node:path";
+import { extname, join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { getAdmin } from "@/lib/auth";
@@ -21,16 +21,25 @@ export async function POST(request: Request) {
     }
 
     const uploadDir = join(process.cwd(), "public", "uploads", "products");
-    mkdirSync(uploadDir, { recursive: true });
+    let isFileSystemWritable = true;
+    try {
+      mkdirSync(uploadDir, { recursive: true });
+    } catch {
+      // In serverless environments like Vercel Lambda, filesystem is read-only
+      isFileSystemWritable = false;
+    }
 
     const uploadedUrls: string[] = [];
 
     for (const file of filesToProcess) {
       if (!file || typeof file.arrayBuffer !== "function") continue;
 
-      const mime = file.type.toLowerCase();
-      if (!mime.startsWith("image/")) {
-        return NextResponse.json({ error: "Yalnızca resim dosyaları yüklenebilir (JPG, PNG, WebP, GIF)." }, { status: 400 });
+      const mime = (file.type || "image/jpeg").toLowerCase();
+      if (!mime.startsWith("image/") && !mime.includes("svg")) {
+        return NextResponse.json(
+          { error: "Yalnızca resim dosyaları yüklenebilir (JPG, PNG, WebP, GIF, SVG)." },
+          { status: 400 }
+        );
       }
 
       const buffer = Buffer.from(await file.arrayBuffer());
@@ -40,14 +49,26 @@ export async function POST(request: Request) {
 
       let ext = extname(file.name).toLowerCase();
       if (!ext || ext.length > 5) {
-        ext = mime.includes("png") ? ".png" : mime.includes("webp") ? ".webp" : ".jpg";
+        ext = mime.includes("png") ? ".png" : mime.includes("webp") ? ".webp" : mime.includes("svg") ? ".svg" : ".jpg";
       }
 
-      const filename = `part_${Date.now()}_${randomUUID().slice(0, 8)}${ext}`;
-      const filePath = join(uploadDir, filename);
+      // If local filesystem is writable, write to disk
+      if (isFileSystemWritable) {
+        try {
+          const filename = `part_${Date.now()}_${randomUUID().slice(0, 8)}${ext}`;
+          const filePath = join(uploadDir, filename);
+          writeFileSync(filePath, buffer);
+          uploadedUrls.push(`/uploads/products/${filename}`);
+          continue;
+        } catch {
+          // If write fails, fall through to Base64 Data URL
+        }
+      }
 
-      writeFileSync(filePath, buffer);
-      uploadedUrls.push(`/uploads/products/${filename}`);
+      // Serverless (Vercel) fallback: generate clean, self-contained Base64 Data URL
+      const base64Data = buffer.toString("base64");
+      const dataUrl = `data:${mime};base64,${base64Data}`;
+      uploadedUrls.push(dataUrl);
     }
 
     return NextResponse.json({
@@ -55,9 +76,9 @@ export async function POST(request: Request) {
       url: uploadedUrls[0] || "",
       urls: uploadedUrls,
     });
-  } catch (err: any) {
-    console.error("Upload error:", err);
-    return NextResponse.json({ error: err.message || "Resim yüklenirken hata oluştu." }, { status: 500 });
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : "Resim yüklenirken hata oluştu.";
+    console.error("Upload error:", errorMsg);
+    return NextResponse.json({ error: errorMsg }, { status: 500 });
   }
 }
-
