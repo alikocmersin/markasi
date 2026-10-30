@@ -363,7 +363,21 @@ export default function Home() {
   const vehicleCatalogRequest = useRef<AbortController | null>(null);
   const [categoryImages, setCategoryImages] = useState<Record<string, string>>({});
   const [dynamicCategories, setDynamicCategories] = useState<Array<{ name: string; image: string; description?: string }>>([]);
-  const [selectedCategory, setSelectedCategory] = useState("Tüm Parçalar");
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+
+  function toggleCategory(categoryName: string) {
+    setCurrentProductPage(1);
+    setSelectedCategories((current) =>
+      current.includes(categoryName)
+        ? current.filter((c) => c !== categoryName)
+        : [...current, categoryName]
+    );
+  }
+
+  function clearCategoryFilter() {
+    setCurrentProductPage(1);
+    setSelectedCategories([]);
+  }
   const [cartAnimationId, setCartAnimationId] = useState<string | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<Part | null>(null);
   const [activeModalImageIndex, setActiveModalImageIndex] = useState(0);
@@ -389,7 +403,7 @@ export default function Home() {
     const cat = params.get("category");
     if (cat) {
       const timer = setTimeout(() => {
-        setSelectedCategory(cat);
+        setSelectedCategories([cat]);
         setCurrentProductPage(1);
       }, 0);
       return () => clearTimeout(timer);
@@ -558,6 +572,13 @@ export default function Home() {
     engine: vehicleSelections[4]?.label ?? "",
     power: vehicleSelections[5]?.label ?? "",
   };
+  const selectedBrand = vehicleSelections[0]?.label ?? "";
+  const selectedModel = vehicleSelections[1]?.label ?? "";
+  const selectedBody = vehicleSelections[2]?.label ?? "";
+  const selectedYear = vehicleSelections[3]?.label ?? "";
+  const selectedEngine = vehicleSelections[4]?.label ?? "";
+  const selectedPower = vehicleSelections[5]?.label ?? "";
+  const hasVehicleFilter = Boolean(selectedBrand.trim());
   const vehicleReady = vehicleSelections.every(Boolean);
   const availableCategories = Array.from(
     new Set([
@@ -574,13 +595,19 @@ export default function Home() {
     ])
   ).filter((name) => name && name.trim() !== "" && name !== "Tüm Parçalar");
 
-  const vehicleFilteredProducts = vehicleReady
+  const vehicleFilteredProducts = hasVehicleFilter
     ? products.filter((product) => {
-        const fitment = normalizeFitment(product.fitment);
-        return (
-          fitment.includes(normalizeFitment(vehicle.brand)) &&
-          fitment.includes(normalizeFitment(vehicle.model))
+        const fitment = normalizeFitment(
+          (product.fitment || "") + " " + (product.name || "") + " " + (product.brand || "")
         );
+        const brandNorm = normalizeFitment(selectedBrand);
+        if (!fitment.includes(brandNorm)) return false;
+
+        if (selectedModel.trim()) {
+          const modelNorm = normalizeFitment(selectedModel);
+          if (!fitment.includes(modelNorm)) return false;
+        }
+        return true;
       })
     : products;
 
@@ -809,10 +836,10 @@ export default function Home() {
     0,
   );
   const categoryFilteredProducts =
-    selectedCategory === "Tüm Parçalar" || !selectedCategory
+    selectedCategories.length === 0
       ? vehicleFilteredProducts
       : vehicleFilteredProducts.filter((product) =>
-          matchCategory(product.category, selectedCategory)
+          selectedCategories.some((cat) => matchCategory(product.category, cat))
         );
 
   const displayedProducts = categoryFilteredProducts;
@@ -837,7 +864,7 @@ export default function Home() {
 
   function selectFeaturedCategory(category: string) {
     const vehicleCategories = ["Fren", "Debriyaj", "Filtreler", "Motor yağları", "Balatalar"];
-    setSelectedCategory(category);
+    toggleCategory(category);
     setCurrentProductPage(1);
     setQuery("");
     setSubmittedQuery("");
@@ -1030,11 +1057,11 @@ export default function Home() {
       part && `Parça markası: ${part.brand}`,
       part && `Parça kodu: ${part.code}`,
       part && `Kategori: ${part.category}`,
-      !part && selectedCategory !== "Tüm Parçalar" &&
-        `Seçili kategori: ${selectedCategory}`,
+      !part && selectedCategories.length > 0 &&
+        `Seçili kategoriler: ${selectedCategories.join(", ")}`,
       submittedQuery && `Arama / OEM kodu: ${submittedQuery}`,
-      vehicleReady &&
-        `Araç: ${vehicle.brand} ${vehicle.model} · ${vehicle.body} · ${vehicle.year} · ${vehicle.engine} · ${vehicle.power}`,
+      hasVehicleFilter &&
+        `Araç: ${[selectedBrand, selectedModel, selectedBody, selectedYear, selectedEngine, selectedPower].filter(Boolean).join(" · ")}`,
       "Uyumluluk, stok ve fiyat bilgisi paylaşabilir misiniz?",
     ]
       .filter(Boolean)
@@ -1236,7 +1263,7 @@ export default function Home() {
           </h2>
 
           {/* Seçilen Araç Bilgilendirme Kartı */}
-          {vehicleReady && (
+          {hasVehicleFilter && (
             <div className="mb-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50/80 p-4 shadow-sm">
               <div className="flex items-center gap-3">
                 <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-emerald-600 text-white shadow-sm">
@@ -1247,7 +1274,7 @@ export default function Home() {
                     Seçili Araç ile Uyumlu Parçalar
                   </p>
                   <p className="text-sm font-black text-slate-800">
-                    {vehicle.brand} {vehicle.model} · {vehicle.body} · {vehicle.year} · {vehicle.engine} · {vehicle.power}
+                    {[selectedBrand, selectedModel, selectedBody, selectedYear, selectedEngine, selectedPower].filter(Boolean).join(" · ")}
                   </p>
                 </div>
               </div>
@@ -1272,80 +1299,112 @@ export default function Home() {
             </div>
           )}
 
-          {/* Resimli Parça Kategorileri Bölümü */}
+          {/* Resimli Parça Kategorileri Bölümü - Çoklu Seçim & Yeşil Işık Efekti */}
           <div className="mb-6">
-            <div className="mb-3 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Layers size={18} className="text-[#f36b2b]" />
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <Layers size={18} className="text-emerald-600" />
                 <h3 className="text-sm sm:text-base font-black text-[#172a3d]">
                   Parça Kategorileri
                 </h3>
-                {selectedCategory !== "Tüm Parçalar" && (
-                  <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-bold text-[#f36b2b]">
-                    {selectedCategory}
-                  </span>
+                {selectedCategories.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-1.5 ml-1">
+                    {selectedCategories.map((c) => (
+                      <span
+                        key={c}
+                        className="inline-flex items-center gap-1 rounded-full border border-emerald-300 bg-emerald-100 px-2.5 py-0.5 text-[11px] font-black text-emerald-800 shadow-sm"
+                      >
+                        <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                        {c}
+                        <button
+                          type="button"
+                          onClick={() => toggleCategory(c)}
+                          className="ml-0.5 text-xs text-emerald-700 hover:text-emerald-950 font-bold"
+                          title="Kategoriyi kaldır"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
                 )}
               </div>
-              {selectedCategory !== "Tüm Parçalar" && (
+              {selectedCategories.length > 0 && (
                 <button
                   type="button"
-                  onClick={() => {
-                    setSelectedCategory("Tüm Parçalar");
-                    setCurrentProductPage(1);
-                  }}
-                  className="text-xs font-bold text-[#f36b2b] hover:underline"
+                  onClick={clearCategoryFilter}
+                  className="text-xs font-bold text-emerald-700 hover:underline hover:text-emerald-800"
                 >
-                  Tüm Kategorileri Göster
+                  Tüm Kategorileri Göster ({vehicleFilteredProducts.length})
                 </button>
               )}
             </div>
 
             {/* Yatay Kaydırılabilir Resimli Kategori Kartları */}
-            <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-thin">
+            <div className="flex gap-3 overflow-x-auto pb-3 pt-1 scrollbar-thin">
               {/* Tüm Parçalar Kartı */}
               <button
                 type="button"
-                onClick={() => {
-                  setSelectedCategory("Tüm Parçalar");
-                  setCurrentProductPage(1);
-                }}
-                className={`group flex min-w-[110px] sm:min-w-[125px] flex-col items-center justify-center rounded-2xl border p-2.5 text-center transition ${
-                  selectedCategory === "Tüm Parçalar"
-                    ? "border-[#f36b2b] bg-orange-50/80 shadow-md ring-2 ring-orange-200"
+                onClick={clearCategoryFilter}
+                className={`group relative flex min-w-[120px] sm:min-w-[135px] flex-col items-center justify-center rounded-2xl border p-3 text-center transition-all duration-300 ${
+                  selectedCategories.length === 0
+                    ? "border-emerald-500 bg-emerald-50/90 text-emerald-950 ring-2 ring-emerald-500 ring-offset-2 shadow-[0_0_20px_rgba(16,185,129,0.38)] -translate-y-1"
                     : "border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm"
                 }`}
               >
+                {/* Yeşil Işık Efekti (Tüm Parçalar aktifken) */}
+                {selectedCategories.length === 0 && (
+                  <span className="absolute top-2.5 right-2.5 flex size-3" title="Tüm Parçalar Aktif">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex size-3 rounded-full bg-emerald-500 shadow-[0_0_10px_#10b981]"></span>
+                  </span>
+                )}
                 <div
-                  className={`grid size-12 place-items-center rounded-xl mb-1.5 transition ${
-                    selectedCategory === "Tüm Parçalar"
-                      ? "bg-[#f36b2b] text-white shadow-sm"
-                      : "bg-slate-100 text-slate-600 group-hover:bg-orange-50 group-hover:text-[#f36b2b]"
+                  className={`grid size-14 place-items-center rounded-xl mb-2 transition ${
+                    selectedCategories.length === 0
+                      ? "bg-emerald-600 text-white shadow-md shadow-emerald-500/30"
+                      : "bg-slate-100 text-slate-600 group-hover:bg-emerald-50 group-hover:text-emerald-600"
                   }`}
                 >
-                  <Box size={22} />
+                  <Box size={24} />
                 </div>
-                <span className="text-xs font-extrabold text-slate-800 line-clamp-1">Tüm Parçalar</span>
-                <span className="mt-0.5 text-[10px] font-bold text-slate-500">{vehicleFilteredProducts.length} parça</span>
+                <span className={`text-xs font-extrabold line-clamp-1 ${
+                  selectedCategories.length === 0 ? "text-emerald-950 font-black" : "text-slate-800"
+                }`}>
+                  Tüm Parçalar
+                </span>
+                <span className="mt-0.5 text-[10px] font-bold text-slate-500">
+                  {vehicleFilteredProducts.length} parça
+                </span>
               </button>
 
-              {/* Resimli Kategori Kartları */}
+              {/* Resimli Çoklu Seçilebilir Kategori Kartları */}
               {categoryList.map((cat) => {
-                const isSelected = selectedCategory === cat.name;
+                const isSelected = selectedCategories.includes(cat.name);
                 return (
                   <button
                     key={cat.name}
                     type="button"
-                    onClick={() => {
-                      setSelectedCategory(isSelected ? "Tüm Parçalar" : cat.name);
-                      setCurrentProductPage(1);
-                    }}
-                    className={`group flex min-w-[115px] sm:min-w-[130px] flex-col items-center justify-center rounded-2xl border p-3 text-center transition ${
+                    onClick={() => toggleCategory(cat.name)}
+                    className={`group relative flex min-w-[120px] sm:min-w-[135px] flex-col items-center justify-center rounded-2xl border p-3 text-center transition-all duration-300 ${
                       isSelected
-                        ? "border-[#f36b2b] bg-orange-50 shadow-md ring-2 ring-orange-200"
+                        ? "border-emerald-500 bg-emerald-50/90 text-emerald-950 ring-2 ring-emerald-500 ring-offset-2 shadow-[0_0_20px_rgba(16,185,129,0.38)] -translate-y-1"
                         : "border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm"
                     }`}
                   >
-                    <div className="relative size-14 overflow-hidden rounded-xl bg-slate-50 mb-2 border border-slate-100 flex items-center justify-center p-1.5">
+                    {/* Yeşil Işık Efekti (Seçildiğinde yanan yeşil LED ışık) */}
+                    {isSelected && (
+                      <span className="absolute top-2.5 right-2.5 flex size-3" title="Seçili Kategori">
+                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
+                        <span className="relative inline-flex size-3 rounded-full bg-emerald-500 shadow-[0_0_10px_#10b981]"></span>
+                      </span>
+                    )}
+
+                    <div className={`relative size-14 overflow-hidden rounded-xl mb-2 border flex items-center justify-center p-1.5 transition ${
+                      isSelected
+                        ? "border-emerald-300 bg-white shadow-inner"
+                        : "border-slate-100 bg-slate-50"
+                    }`}>
                       <img
                         src={cat.image}
                         alt={cat.name}
@@ -1359,9 +1418,15 @@ export default function Home() {
                         }}
                       />
                     </div>
-                    <span className="text-xs font-extrabold text-slate-800 line-clamp-1">{cat.name}</span>
+                    <span className={`text-xs font-extrabold line-clamp-1 ${
+                      isSelected ? "text-emerald-950 font-black" : "text-slate-800"
+                    }`}>
+                      {cat.name}
+                    </span>
                     <span className={`mt-0.5 text-[10px] font-bold ${
-                      cat.count > 0 ? "text-emerald-700" : "text-slate-400"
+                      isSelected
+                        ? "text-emerald-700"
+                        : cat.count > 0 ? "text-slate-500" : "text-slate-400"
                     }`}>
                       {cat.count} parça
                     </span>
@@ -1382,8 +1447,27 @@ export default function Home() {
               ) : (
                 <>
                   Toplam <span className="font-bold text-slate-800">{displayedProducts.length}</span> uyumlu parça listeleniyor
-                  {selectedCategory !== "Tüm Parçalar" && (
-                    <span className="ml-1 text-slate-400">({selectedCategory})</span>
+                  {selectedCategories.length > 0 && (
+                    <span className="ml-1.5 font-semibold text-emerald-700">
+                      (Filtrelenen: {selectedCategories.join(", ")})
+                    </span>
+                  )}
+                </>
+              )}
+            </p>
+          </div>
+          <div className="mt-2 mb-3 flex items-center justify-between text-xs text-slate-500">
+            <p>
+              {submittedQuery ? (
+                <>
+                  <strong className="text-slate-700">{submittedQuery}</strong> için{" "}
+                  <span className="font-bold text-slate-800">{displayedProducts.length}</span> sonuç
+                </>
+              ) : (
+                <>
+                  Toplam <span className="font-bold text-slate-800">{displayedProducts.length}</span> uyumlu parça listeleniyor
+                  {selectedCategories.length > 0 && (
+                    <span className="ml-1.5 font-semibold text-emerald-700">(Filtrelenen: {selectedCategories.join(", ")})</span>
                   )}
                 </>
               )}
@@ -1684,7 +1768,7 @@ export default function Home() {
                   setCurrentProductPage(1);
                   setQuery("");
                   setSubmittedQuery("");
-                  setSelectedCategory("Tüm Parçalar");
+                  setSelectedCategories([]);
                   setShowFavoritesOnly(false);
                   resetVehicleSelection();
                 }}
