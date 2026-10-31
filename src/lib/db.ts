@@ -297,6 +297,121 @@ declare global {
   var markasiSearchFunctionRegistered: boolean | undefined;
 }
 
+function romanToNumber(str: string): string {
+  return str
+    .replace(/\bviii\b/gi, "8")
+    .replace(/\bvii\b/gi, "7")
+    .replace(/\bvi\b/gi, "6")
+    .replace(/\biv\b/gi, "4")
+    .replace(/\bv\b/gi, "5")
+    .replace(/\biii\b/gi, "3")
+    .replace(/\bii\b/gi, "2")
+    .replace(/\bi\b/gi, "1");
+}
+
+export function cleanVehicleText(value: unknown): string {
+  if (!value) return "";
+  return romanToNumber(String(value).toLowerCase())
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/ı/g, "i")
+    .replace(/[^a-z0-9.\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function matchProductSearchSql(text: unknown, query: unknown): number {
+  if (!query || String(query).trim() === "") return 1;
+  if (!text) return 0;
+  const normText = normalizeProductSearch(String(text));
+  const words = String(query)
+    .trim()
+    .split(/\s+/)
+    .map(normalizeProductSearch)
+    .filter(Boolean);
+  if (words.length === 0) return 1;
+  for (const word of words) {
+    if (!normText.includes(word)) return 0;
+  }
+  return 1;
+}
+
+export function matchVehicleFitmentSql(
+  fitment: unknown,
+  compatibleVehicles: unknown,
+  brand: unknown,
+  model: unknown,
+  body: unknown,
+  year: unknown,
+  engine: unknown,
+): number {
+  const brandStr = String(brand || "").trim();
+  if (!brandStr) return 1;
+
+  const fit = cleanVehicleText(
+    `${String(fitment || "")} ${String(compatibleVehicles || "")}`,
+  );
+  const b = cleanVehicleText(brandStr);
+  if (!fit.includes(b)) return 0;
+
+  const modelStr = String(model || "").trim();
+  if (modelStr) {
+    const modelWords = cleanVehicleText(modelStr)
+      .split(" ")
+      .filter((w) => w.length > 1);
+    const mainModel = modelWords[0];
+    if (mainModel && !fit.includes(mainModel)) return 0;
+  }
+
+  const yearStr = String(year || "").trim();
+  if (yearStr) {
+    const yr = Number.parseInt(yearStr, 10);
+    if (!Number.isNaN(yr)) {
+      const yearMatches = fit.match(/\b(19\d\d|20\d\d)\s*[-–/]\s*(19\d\d|20\d\d)\b/);
+      if (yearMatches) {
+        const startYear = Number.parseInt(yearMatches[1], 10);
+        const endYear = Number.parseInt(yearMatches[2], 10);
+        if (yr < startYear || yr > endYear) return 0;
+      }
+    }
+  }
+
+  const genCandidate = cleanVehicleText(`${String(body || "")} ${modelStr}`);
+  const genList = [
+    "astra h", "astra j", "astra k", "astra l",
+    "golf 7", "golf 8", "golf 6", "golf 5", "golf 4",
+    "clio 4", "clio 5", "megane 3", "megane 4",
+    "focus 2", "focus 3", "focus 4",
+    "e46", "e90", "f30", "g20",
+    "w204", "w205", "w206"
+  ];
+  for (const code of genList) {
+    if (genCandidate.includes(code)) {
+      const baseModel = code.split(" ")[0];
+      const hasOtherGen = genList
+        .filter((g) => g !== code && g.split(" ")[0] === baseModel)
+        .some((other) => fit.includes(other));
+      if (hasOtherGen && !fit.includes(code)) return 0;
+    }
+  }
+
+  const engineStr = String(engine || "").trim();
+  if (engineStr) {
+    const engClean = cleanVehicleText(engineStr);
+    const engVolMatch = engClean.match(/\b\d\s*[.]\s*\d\b/);
+    if (engVolMatch) {
+      const vol = engVolMatch[0].replace(/\s+/g, "");
+      const fitVolMatch = fit.match(/\b\d\s*[.]\s*\d\b/);
+      if (fitVolMatch) {
+        const fitVol = fitVolMatch[0].replace(/\s+/g, "");
+        if (vol !== fitVol) return 0;
+      }
+    }
+  }
+
+  return 1;
+}
+
 export function normalizeProductSearch(value: string) {
   return value
     .normalize("NFD")
@@ -595,6 +710,10 @@ function openDatabase() {
   addColumnIfNotExists(database, "orders", "invoice_status", "TEXT DEFAULT 'Kesilmedi'");
   addColumnIfNotExists(database, "orders", "customer_notes", "TEXT DEFAULT ''");
   addColumnIfNotExists(database, "orders", "admin_notes", "TEXT DEFAULT ''");
+  addColumnIfNotExists(database, "orders", "member_id", "TEXT REFERENCES members(id)");
+  try {
+    database.exec("CREATE INDEX IF NOT EXISTS orders_member_id ON orders(member_id)");
+  } catch {}
 
   // 4. Members Schema Migration
   addColumnIfNotExists(database, "members", "b2b_group_id", "TEXT");
@@ -1055,6 +1174,16 @@ export function getDatabase() {
       "normalize_product_search",
       { deterministic: true },
       normalizeProductSearch,
+    );
+    globalThis.markasiDatabase.function(
+      "match_product_search",
+      { deterministic: true },
+      matchProductSearchSql,
+    );
+    globalThis.markasiDatabase.function(
+      "match_vehicle_fitment",
+      { deterministic: true },
+      matchVehicleFitmentSql,
     );
     globalThis.markasiSearchFunctionRegistered = true;
   }
@@ -1663,6 +1792,11 @@ export function bulkImportProducts(
 export function listProducts(options?: {
   query?: string;
   category?: string;
+  vehicleBrand?: string;
+  vehicleModel?: string;
+  vehicleBody?: string;
+  vehicleYear?: string;
+  vehicleEngine?: string;
   includeCosts?: boolean;
   includeHiddenBrands?: boolean;
   includeHiddenCategories?: boolean;
@@ -1713,24 +1847,30 @@ export function listProducts(options?: {
          AND (@criticalOnly = 0 OR products.central_stock <= 5)
          AND (@shelf = '' OR products.shelf = @shelf)
          AND (@corridor = '' OR products.corridor = @corridor)
+         AND match_vehicle_fitment(products.fitment, products.compatible_vehicles, @vehicleBrand, @vehicleModel, @vehicleBody, @vehicleYear, @vehicleEngine) = 1
          AND (@query = '' OR
            instr(normalize_product_search(products.code), @query) > 0 OR
            instr(normalize_product_search(coalesce(products.sku, '')), @query) > 0 OR
            instr(normalize_product_search(coalesce(products.barcode, '')), @query) > 0 OR
            instr(normalize_product_search(coalesce(products.oem_codes, '')), @query) > 0 OR
-           instr(normalize_product_search(products.brand || products.name || products.fitment), @query) > 0)
+           match_product_search(coalesce(products.brand, '') || ' ' || coalesce(products.name, '') || ' ' || coalesce(products.fitment, '') || ' ' || coalesce(products.category, ''), @query) = 1)
        ORDER BY products.name, products.kind
        LIMIT @limit OFFSET @offset`,
     )
     .all({
       category: options?.category ?? "",
-      query: options?.query ? normalizeProductSearch(options.query) : "",
+      query: options?.query ? options.query.trim() : "",
+      vehicleBrand: options?.vehicleBrand ?? "",
+      vehicleModel: options?.vehicleModel ?? "",
+      vehicleBody: options?.vehicleBody ?? "",
+      vehicleYear: options?.vehicleYear ?? "",
+      vehicleEngine: options?.vehicleEngine ?? "",
       includeHiddenBrands: options?.includeHiddenBrands ? 1 : 0,
       includeHiddenCategories: options?.includeHiddenCategories ? 1 : 0,
       criticalOnly: options?.criticalOnly ? 1 : 0,
       shelf: options?.shelf ?? "",
       corridor: options?.corridor ?? "",
-      limit: options?.limit ?? 500,
+      limit: options?.limit ?? 2500,
       offset: options?.offset ?? 0,
     }) as any[];
 
@@ -1983,6 +2123,34 @@ export function listOrders(options?: {
       items,
     };
   });
+}
+
+export function listOrdersForMember(memberId: string, email?: string) {
+  const database = getDatabase();
+  const orders = database
+    .prepare(
+      `SELECT id, customer_name AS customerName, email, phone, address,
+              payment_method AS paymentMethod, status, total, created_at AS createdAt,
+              vin_number AS vinNumber, vin_status AS vinStatus,
+              courier_company AS courierCompany, tracking_code AS trackingCode,
+              shipping_status AS shippingStatus
+       FROM orders
+       WHERE member_id = ? OR (email = ? AND ? != '')
+       ORDER BY created_at DESC`,
+    )
+    .all(memberId, email ?? "", email ?? "") as any[];
+
+  const getItems = database.prepare(
+    `SELECT order_items.id, order_items.product_id AS productId, order_items.product_name AS name,
+            order_items.code, order_items.quantity, order_items.unit_price AS unitPrice
+     FROM order_items
+     WHERE order_items.order_id = ?`,
+  );
+
+  return orders.map((order) => ({
+    ...order,
+    items: getItems.all(order.id),
+  }));
 }
 
 export function updateOrderVin(orderId: string, vinStatus: "Bekliyor" | "Uyumlu" | "Uyumsuz", adminNotes?: string) {

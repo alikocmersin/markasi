@@ -17,16 +17,18 @@ export async function POST(request: Request) {
 
     const filesToProcess = files.length > 0 ? files : singleFile ? [singleFile] : [];
     if (filesToProcess.length === 0) {
-      return NextResponse.json({ error: "Bacanak en az bir resim dosyası seç" }, { status: 400 });
+      return NextResponse.json({ error: "Lütfen en az bir resim dosyası seçin." }, { status: 400 });
     }
 
     const uploadDir = join(process.cwd(), "public", "uploads", "products");
-    let isFileSystemWritable = true;
-    try {
-      mkdirSync(uploadDir, { recursive: true });
-    } catch {
-      // In serverless environments like Vercel Lambda, filesystem is read-only
-      isFileSystemWritable = false;
+    let isFileSystemWritable = !process.env.VERCEL;
+    if (isFileSystemWritable) {
+      try {
+        mkdirSync(uploadDir, { recursive: true });
+      } catch {
+        // In serverless environments like Vercel Lambda, filesystem is read-only
+        isFileSystemWritable = false;
+      }
     }
 
     const uploadedUrls: string[] = [];

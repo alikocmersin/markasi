@@ -7,6 +7,9 @@ import {
   LogOut,
   MapPin,
   ShieldCheck,
+  Package,
+  Clock,
+  Truck,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -51,6 +54,9 @@ export default function AccountPage() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [authMode, setAuthMode] = useState<"login" | "register">("register");
+  const [activeTab, setActiveTab] = useState<"profile" | "orders">("profile");
+  const [orders, setOrders] = useState<any[]>([]);
+  const [loadingOrders, setLoadingOrders] = useState(false);
 
   useEffect(() => {
     const queryError = new URLSearchParams(window.location.search).get("error");
@@ -64,7 +70,17 @@ export default function AccountPage() {
         const data = (await response.json()) as { profile: MemberProfile };
         return data.profile;
       })
-      .then((memberProfile) => setProfile(memberProfile))
+      .then((memberProfile) => {
+        setProfile(memberProfile);
+        if (memberProfile) {
+          setLoadingOrders(true);
+          fetch("/api/member/orders", { cache: "no-store" })
+            .then((res) => (res.ok ? res.json() : { orders: [] }))
+            .then((data) => setOrders(data.orders || []))
+            .catch(() => {})
+            .finally(() => setLoadingOrders(false));
+        }
+      })
       .catch((loadError: unknown) =>
         setError(
           loadError instanceof Error
@@ -230,6 +246,88 @@ export default function AccountPage() {
                     <LogOut size={14} /> Çıkış yap
                   </button>
                 </div>
+                <div className="mt-6 flex border-b border-slate-200">
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab("profile")}
+                    className={`flex items-center gap-2 border-b-2 px-4 py-2.5 text-xs font-bold transition ${
+                      activeTab === "profile"
+                        ? "border-[#f36b2b] text-[#f36b2b]"
+                        : "border-transparent text-slate-500 hover:text-slate-800"
+                    }`}
+                  >
+                    <MapPin size={15} />
+                    Profil ve Adres
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab("orders")}
+                    className={`flex items-center gap-2 border-b-2 px-4 py-2.5 text-xs font-bold transition ${
+                      activeTab === "orders"
+                        ? "border-[#f36b2b] text-[#f36b2b]"
+                        : "border-transparent text-slate-500 hover:text-slate-800"
+                    }`}
+                  >
+                    <Package size={15} />
+                    Siparişlerim (${orders.length})
+                  </button>
+                </div>
+
+                {activeTab === "orders" ? (
+                  <div className="mt-6 space-y-4">
+                    {loadingOrders ? (
+                      <div className="grid min-h-32 place-items-center text-[#f36b2b]">
+                        <LoaderCircle className="animate-spin" />
+                      </div>
+                    ) : orders.length === 0 ? (
+                      <div className="rounded-2xl border border-dashed border-slate-200 p-8 text-center">
+                        <Package size={36} className="mx-auto text-slate-300 mb-2" />
+                        <p className="text-sm font-bold text-slate-700">Henüz siparişiniz bulunmuyor</p>
+                        <p className="text-xs text-slate-400 mt-1">Verdiğiniz siparişler burada listelenecek ve kargo durumu anlık takip edilebilecektir.</p>
+                        <Link href="/" className="mt-4 inline-flex items-center gap-2 rounded-xl bg-[#f36b2b] px-4 py-2 text-xs font-bold text-white hover:bg-[#df5b20] transition">
+                          Alışverişe Başla
+                        </Link>
+                      </div>
+                    ) : (
+                      orders.map((order) => (
+                        <div key={order.id} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:shadow-md">
+                          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                            <div>
+                              <span className="text-xs font-black text-slate-900">Sipariş #{order.id}</span>
+                              <span className="ml-2 text-[11px] text-slate-400">
+                                {new Date(order.createdAt).toLocaleDateString("tr-TR", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                              </span>
+                            </div>
+                            <span className="rounded-full bg-orange-100 px-3 py-1 text-xs font-extrabold text-[#f36b2b]">
+                              {order.status || "Yeni"}
+                            </span>
+                          </div>
+
+                          <div className="mt-3 space-y-2">
+                            {order.items?.map((item: any) => (
+                              <div key={item.id} className="flex items-center justify-between text-xs">
+                                <span className="font-medium text-slate-700 line-clamp-1">{item.name} <span className="text-slate-400">({item.code})</span></span>
+                                <span className="font-bold text-slate-900 shrink-0 ml-4">{item.quantity} adet · {item.unitPrice?.toLocaleString("tr-TR")} ₺</span>
+                              </div>
+                            ))}
+                          </div>
+
+                          {order.trackingCode && (
+                            <div className="mt-3 flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600 border border-slate-100">
+                              <Truck size={14} className="text-[#f36b2b]" />
+                              <span>{order.courierCompany || "Kargo"}: <strong className="font-mono text-slate-800">{order.trackingCode}</strong></span>
+                            </div>
+                          )}
+
+                          <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-3 text-xs font-bold">
+                            <span className="text-slate-500">Ödeme: {order.paymentMethod}</span>
+                            <span className="text-base font-black text-[#f36b2b]">Toplam: {order.total?.toLocaleString("tr-TR")} ₺</span>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                ) : (
                 <form onSubmit={saveProfile} className="mt-6 space-y-4">
                   <ProfileField label="Ad soyad">
                     <input
@@ -331,6 +429,7 @@ export default function AccountPage() {
                     Bilgilerimi kaydet
                   </button>
                 </form>
+                )}
               </>
             ) : (
               <div className="mx-auto max-w-md py-3 text-center">

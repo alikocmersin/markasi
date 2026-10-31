@@ -16,20 +16,43 @@ export async function GET(request: Request) {
       { status: 403 },
     );
   }
-  const query = normalizeProductSearch(
-    (search.get("q") ?? "").trim().slice(0, 80),
-  );
-  const category = (search.get("category") ?? "").trim().slice(0, 60);
-  const products = listProducts({ query, category });
+  const query = (search.get("q") ?? "").trim().slice(0, 100);
+  const category = (search.get("category") ?? "").trim().slice(0, 80);
+  const vehicleBrand = (search.get("brand") ?? "").trim().slice(0, 60);
+  const vehicleModel = (search.get("model") ?? "").trim().slice(0, 60);
+  const vehicleBody = (search.get("body") ?? "").trim().slice(0, 60);
+  const vehicleYear = (search.get("year") ?? "").trim().slice(0, 30);
+  const vehicleEngine = (search.get("engine") ?? "").trim().slice(0, 60);
+
+  const products = listProducts({
+    query,
+    category,
+    vehicleBrand,
+    vehicleModel,
+    vehicleBody,
+    vehicleYear,
+    vehicleEngine,
+    includeCosts: includeCost && Boolean(admin),
+  });
+
   const visibleProducts = products.map((product) => {
+    const supplierTotal = Array.isArray(product.xmlStock)
+      ? product.xmlStock.reduce((sum, s) => sum + (s.quantity || 0), 0)
+      : 0;
+    const totalStock = (product.centralStock || 0) + supplierTotal;
+    const canPurchase = totalStock > 0;
+
     if (admin) {
       const { cost, ...visibleProduct } = product;
       return {
         ...visibleProduct,
         ...(includeCost ? { cost } : {}),
-        canPurchase: product.centralStock > 0,
+        totalStock,
+        canPurchase,
+        suppliers: product.xmlStock || [],
       };
     }
+
     return {
       id: product.id,
       brand: product.brand,
@@ -42,7 +65,10 @@ export async function GET(request: Request) {
       images: product.images || [],
       description: product.description || "",
       centralStock: product.centralStock,
-      canPurchase: product.centralStock > 0,
+      totalStock,
+      canPurchase,
+      xmlStock: product.xmlStock || [],
+      suppliers: product.xmlStock || [],
       fitment: product.fitment,
       compatibleVehicles: product.compatibleVehicles || [],
       position: product.position || "Yönsüz / Evrensel",

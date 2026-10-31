@@ -62,6 +62,8 @@ type Part = {
   description?: string;
   cost?: number;
   centralStock?: number;
+  totalStock?: number;
+  suppliers?: SupplierStock[];
   shelf?: string;
   xmlStock?: SupplierStock[];
   canPurchase: boolean;
@@ -246,6 +248,101 @@ function matchCategory(productCat: string, selectedCat: string): boolean {
   }
 
   return pNorm.includes(sNorm) || sNorm.includes(pNorm);
+}
+
+function getProductAvailableStock(product: Part): number {
+  if (typeof product.totalStock === "number") return product.totalStock;
+  const supplierTotal = Array.isArray(product.xmlStock)
+    ? product.xmlStock.reduce((sum, s) => sum + (s.quantity || 0), 0)
+    : 0;
+  return (product.centralStock ?? 0) + supplierTotal;
+}
+
+function romanToNumber(str: string): string {
+  return str
+    .replace(/\bviii\b/gi, "8")
+    .replace(/\bvii\b/gi, "7")
+    .replace(/\bvi\b/gi, "6")
+    .replace(/\biv\b/gi, "4")
+    .replace(/\bv\b/gi, "5")
+    .replace(/\biii\b/gi, "3")
+    .replace(/\bii\b/gi, "2")
+    .replace(/\bi\b/gi, "1");
+}
+
+function cleanVehicleText(value: unknown): string {
+  if (!value) return "";
+  return romanToNumber(String(value).toLowerCase())
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/ı/g, "i")
+    .replace(/[^a-z0-9.\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function matchVehicle(fitmentText: string, vehicle: VehicleSelection): boolean {
+  if (!vehicle.brand) return true;
+  const fit = cleanVehicleText(fitmentText);
+  const brand = cleanVehicleText(vehicle.brand);
+  if (!fit.includes(brand)) return false;
+
+  if (vehicle.model) {
+    const modelWords = cleanVehicleText(vehicle.model)
+      .split(" ")
+      .filter((w) => w.length > 1);
+    const mainModel = modelWords[0];
+    if (mainModel && !fit.includes(mainModel)) return false;
+  }
+
+  // Check Year Range if present in fitment (e.g. 2004-2010, 2012+)
+  if (vehicle.year) {
+    const yr = Number.parseInt(vehicle.year, 10);
+    if (!Number.isNaN(yr)) {
+      const yearMatches = fitmentText.match(/\b(19\d\d|20\d\d)\s*[-–/]\s*(19\d\d|20\d\d)\b/);
+      if (yearMatches) {
+        const startYear = Number.parseInt(yearMatches[1], 10);
+        const endYear = Number.parseInt(yearMatches[2], 10);
+        if (yr < startYear || yr > endYear) return false;
+      }
+    }
+  }
+
+  // Check Generation / Body
+  const genCandidate = cleanVehicleText(`${vehicle.body || ""} ${vehicle.model || ""}`);
+  const genList = [
+    "astra h", "astra j", "astra k", "astra l",
+    "golf 7", "golf 8", "golf 6", "golf 5", "golf 4",
+    "clio 4", "clio 5", "megane 3", "megane 4",
+    "focus 2", "focus 3", "focus 4",
+    "e46", "e90", "f30", "g20",
+    "w204", "w205", "w206"
+  ];
+  for (const code of genList) {
+    if (genCandidate.includes(code)) {
+      const baseModel = code.split(" ")[0];
+      const hasOtherGen = genList
+        .filter((g) => g !== code && g.split(" ")[0] === baseModel)
+        .some((other) => fit.includes(other));
+      if (hasOtherGen && !fit.includes(code)) return false;
+    }
+  }
+
+  // Engine volume matching
+  if (vehicle.engine) {
+    const engClean = cleanVehicleText(vehicle.engine);
+    const engVolMatch = engClean.match(/\b\d\s*[.]\s*\d\b/);
+    if (engVolMatch) {
+      const vol = engVolMatch[0].replace(/\s+/g, "");
+      const fitVolMatch = fit.match(/\b\d\s*[.]\s*\d\b/);
+      if (fitVolMatch) {
+        const fitVol = fitVolMatch[0].replace(/\s+/g, "");
+        if (vol !== fitVol) return false;
+      }
+    }
+  }
+
+  return true;
 }
 
 function normalizeFitment(value: string) {
@@ -612,17 +709,10 @@ export default function Home() {
 
   const vehicleFilteredProducts = hasVehicleFilter
     ? products.filter((product) => {
-        const fitment = normalizeFitment(
-          (product.fitment || "") + " " + (product.name || "") + " " + (product.brand || "")
+        return matchVehicle(
+          (product.fitment || "") + " " + (product.name || "") + " " + (product.brand || ""),
+          vehicle
         );
-        const brandNorm = normalizeFitment(selectedBrand);
-        if (!fitment.includes(brandNorm)) return false;
-
-        if (selectedModel.trim()) {
-          const modelNorm = normalizeFitment(selectedModel);
-          if (!fitment.includes(modelNorm)) return false;
-        }
-        return true;
       })
     : products;
 
@@ -648,7 +738,11 @@ export default function Home() {
     setProductsError("");
     const params = new URLSearchParams();
     if (submittedQuery) params.set("q", cleanPartNumber(submittedQuery));
-// Client-side category filtering for instant responsive UI
+    if (selectedBrand) params.set("brand", selectedBrand);
+    if (selectedModel) params.set("model", selectedModel);
+    if (selectedBody) params.set("body", selectedBody);
+    if (selectedYear) params.set("year", selectedYear);
+    if (selectedEngine) params.set("engine", selectedEngine);
     if (!hideCost) params.set("cost", "1");
     try {
       const response = await fetch(`/api/products?${params}`, {
@@ -669,7 +763,7 @@ export default function Home() {
       };
       setCatalogCategories(data.categories);
       const completeCatalog =
-        !params.has("q") && !params.has("category");
+        !params.has("q") && !params.has("category") && !params.has("brand");
       setProductCatalog((current) =>
         completeCatalog
           ? Object.fromEntries(
@@ -692,7 +786,7 @@ export default function Home() {
     } finally {
       setLoadingProducts(false);
     }
-  }, [hideCost, submittedQuery]);
+  }, [hideCost, submittedQuery, selectedBrand, selectedModel, selectedBody, selectedYear, selectedEngine]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -991,7 +1085,7 @@ export default function Home() {
     setOrderNotice("");
     setCart((current) => {
       const existing = current.find((line) => line.productId === product.id);
-      const maximumQuantity = Math.min(product.centralStock ?? 99, 99);
+      const maximumQuantity = Math.min(Math.max(1, getProductAvailableStock(product)), 99);
       if (existing) {
         if (existing.quantity >= maximumQuantity) return current;
         const newQty = Math.min(existing.quantity + quantityToAdd, maximumQuantity);
@@ -1015,7 +1109,7 @@ export default function Home() {
       setCart((current) => current.filter((line) => line.productId !== productId));
       return;
     }
-    const maximumQuantity = Math.min(product.centralStock ?? 99, 99);
+    const maximumQuantity = Math.min(Math.max(1, getProductAvailableStock(product)), 99);
     if (quantity > maximumQuantity) return;
     setCart((current) =>
       current.map((line) =>
@@ -2590,7 +2684,7 @@ export default function Home() {
         ).filter(Boolean);
         const inCart =
           cart.find((line) => line.productId === selectedProduct.id)?.quantity ?? 0;
-        const maxStock = Math.min(selectedProduct.centralStock ?? 99, 99);
+        const maxStock = Math.min(Math.max(1, getProductAvailableStock(selectedProduct)), 99);
         const canAddMore =
           selectedProduct.canPurchase &&
           inCart < maxStock &&
