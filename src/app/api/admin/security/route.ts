@@ -120,17 +120,14 @@ export async function POST(request: Request) {
       }
 
       const buffer = Buffer.from(await file.arrayBuffer());
-      // SQLite header check (magic header: "SQLite format 3\0")
       if (!buffer.subarray(0, 15).toString().startsWith("SQLite format 3")) {
         return NextResponse.json({ error: "Yüklenen dosya geçerli bir SQLite veritabanı değil." }, { status: 400 });
       }
 
-      // Close current DB connection, write new file, and reopen
       resetDatabase();
       const targetPath = getDatabasePath();
       writeFileSync(targetPath, buffer);
 
-      // Verify new database opens correctly
       const newDb = getDatabase();
       const check = newDb.prepare("SELECT count(*) as count FROM products").get() as { count: number };
 

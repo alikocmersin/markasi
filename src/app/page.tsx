@@ -494,6 +494,7 @@ export default function Home() {
         .then((d) => {
           const map: Record<string, string> = {};
           for (const c of d.categories || []) {
+            map[c.name] = localMap[c.name] || localMap[c.slug] || c.image;
             const chosen = localMap[c.name] || localMap[c.slug] || c.icon || c.banner || c.image;
             map[c.name] = chosen;
             if (c.slug) map[c.slug] = chosen;

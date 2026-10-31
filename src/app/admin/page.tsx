@@ -18,6 +18,7 @@ import {
   ChevronLeft,
   ChevronRight,
   CircleAlert,
+  Cloud,
   Clock,
   Copy,
   CreditCard,
@@ -500,6 +501,86 @@ export default function EnterpriseAdminSuite() {
   const [adminUsers, setAdminUsers] = useState<any[]>([]);
   const [restoringDb, setRestoringDb] = useState(false);
   const [restoringSnapshot, setRestoringSnapshot] = useState(false);
+
+  // Turso Cloud SQLite States
+  const [tursoUrl, setTursoUrl] = useState("");
+  const [tursoToken, setTursoToken] = useState("");
+  const [tursoTesting, setTursoTesting] = useState(false);
+  const [tursoSaving, setTursoSaving] = useState(false);
+  const [tursoSyncing, setTursoSyncing] = useState(false);
+  const [tursoStatus, setTursoStatus] = useState<any>(null);
+
+  const loadTursoStatus = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/turso");
+      if (res.ok) {
+        const data = await res.json();
+        setTursoStatus(data);
+      }
+    } catch {}
+  }, []);
+
+  const handleTestTurso = async () => {
+    setTursoTesting(true);
+    try {
+      const res = await fetch("/api/admin/turso", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "test", url: tursoUrl, authToken: tursoToken }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || data.error || "Bağlantı kurulamadı.");
+      }
+      showToast("Tebrikler! Turso veritabanı bağlantısı başarılı.");
+      void loadTursoStatus();
+    } catch (err: any) {
+      showToast(err.message, "error");
+    } finally {
+      setTursoTesting(false);
+    }
+  };
+
+  const handleSaveTurso = async () => {
+    setTursoSaving(true);
+    try {
+      const res = await fetch("/api/admin/turso", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "save", url: tursoUrl, authToken: tursoToken }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Kaydedilemedi.");
+      showToast("Turso ayarları kaydedildi!");
+      void loadTursoStatus();
+    } catch (err: any) {
+      showToast(err.message, "error");
+    } finally {
+      setTursoSaving(false);
+    }
+  };
+
+  const handleSyncToTurso = async () => {
+    if (!confirm("Mevcut tüm ürün, kategori ve ayarları Turso bulut veritabanına aktarmak istediğinize emin misiniz?")) {
+      return;
+    }
+    setTursoSyncing(true);
+    try {
+      const res = await fetch("/api/admin/turso", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "sync-to-turso", url: tursoUrl, authToken: tursoToken }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Aktarım başarısız oldu.");
+      showToast(data.message || "Tüm mağaza Turso bulutuna aktarıldı!");
+      void loadTursoStatus();
+    } catch (err: any) {
+      showToast(err.message, "error");
+    } finally {
+      setTursoSyncing(false);
+    }
+  };
 
   const handleRestoreDb = async (file: File) => {
     if (!file) return;
@@ -4583,6 +4664,111 @@ async function compressImageFile(file: File, maxWidth = 1000, maxHeight = 1000, 
                 </label>
               </div>
             </div>
+
+            {/* KART: TURSO BULUT VERİTABANI ENTEGRASYONU */}
+            <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="border-b pb-4 mb-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <span className="grid size-10 place-items-center rounded-2xl bg-sky-50 text-sky-600">
+                    <Cloud size={20} />
+                  </span>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-sm font-black text-slate-900">
+                        Turso Bulut SQLite Veritabanı (7/24 Kesintisiz Kalıcılık)
+                      </h3>
+                      {tursoStatus?.configured ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-[10px] font-bold text-emerald-700">
+                          <CheckCircle2 size={12} /> Bulut Aktif
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-[10px] font-bold text-amber-700">
+                          Kurulum Bekleniyor
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-slate-500">
+                      Turso, veritabanınızı 9 GB ücretsiz depolama ile buluta taşır. Vercel kapansa bile hiçbir bilginiz kaybolmaz.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Kurulum Rehberi */}
+              <div className="rounded-2xl border border-sky-100 bg-sky-50/70 p-4 text-xs text-sky-950 mb-5">
+                <p className="font-bold mb-1.5 flex items-center gap-1.5">
+                  <Sparkles size={14} className="text-sky-600" />
+                  3 Tıkta Ücretsiz Turso Hesabı Nasıl Açılır?
+                </p>
+                <ol className="list-decimal list-inside space-y-1 text-slate-700">
+                  <li><a href="https://turso.tech" target="_blank" rel="noreferrer" className="text-sky-700 font-bold underline">turso.tech</a> veya <a href="https://app.turso.tech" target="_blank" rel="noreferrer" className="text-sky-700 font-bold underline">app.turso.tech</a> adresine gidin ve Google/GitHub hesabınızla ücretsiz giriş yapın (Kredi kartı gerekmez).</li>
+                  <li><strong>"Create Database"</strong> butonuna basın, veritabanı adına <code>markasi</code> yazın.</li>
+                  <li>Oluşan sayfadaki <strong>Database URL</strong> (<code>libsql://...</code>) ve <strong>Token</strong> değerlerini kopyalayıp aşağıdaki kutucuklara yapıştırın.</li>
+                </ol>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">
+                    Turso Database URL:
+                  </label>
+                  <input
+                    type="text"
+                    value={tursoUrl}
+                    onChange={(e) => setTursoUrl(e.target.value)}
+                    placeholder="Örn: libsql://markasi-kullaniciadi.turso.io"
+                    className="w-full rounded-xl border border-slate-200 p-2.5 font-mono text-xs outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+                  />
+                </div>
+
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">
+                    Turso Auth Token:
+                  </label>
+                  <input
+                    type="password"
+                    value={tursoToken}
+                    onChange={(e) => setTursoToken(e.target.value)}
+                    placeholder="Örn: eyJhbGciOi..."
+                    className="w-full rounded-xl border border-slate-200 p-2.5 font-mono text-xs outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+                  />
+                </div>
+              </div>
+
+              <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t pt-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleTestTurso}
+                    disabled={tursoTesting || !tursoUrl || !tursoToken}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 transition disabled:opacity-50"
+                  >
+                    {tursoTesting ? <LoaderCircle size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                    Bağlantıyı Test Et
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveTurso}
+                    disabled={tursoSaving || !tursoUrl || !tursoToken}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 px-4 py-2 text-xs font-bold text-white hover:bg-slate-800 transition disabled:opacity-50"
+                  >
+                    {tursoSaving ? <LoaderCircle size={14} className="animate-spin" /> : <Save size={14} />}
+                    Ayarları Kaydet
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleSyncToTurso}
+                  disabled={tursoSyncing || !tursoUrl || !tursoToken}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-[#f36b2b] px-5 py-2 text-xs font-black text-white hover:bg-[#df5b20] shadow-sm transition disabled:opacity-50"
+                >
+                  {tursoSyncing ? <LoaderCircle size={14} className="animate-spin" /> : <Upload size={14} />}
+                  Mevcut Mağazayı Turso Bulutuna Aktar (Sync)
+                </button>
+              </div>
+            </div>
+
             <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
               <h3 className="text-sm font-black text-slate-900 flex items-center gap-2 mb-4">
                 <History size={16} className="text-[#f36b2b]" />
