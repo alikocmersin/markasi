@@ -511,23 +511,45 @@ const seedProducts = [
   ...createOpelDemoProducts(),
 ];
 
-function openDatabase() {
+let activeDbPath = "";
+
+export function getDatabasePath(): string {
+  if (activeDbPath) return activeDbPath;
   const isVercel = Boolean(process.env.VERCEL || process.env.NOW_REGION);
   let filename = process.env.DATABASE_PATH;
-
   if (!filename) {
     if (isVercel) {
       filename = join("/tmp", "markasi.sqlite");
-      const seedSource = join(process.cwd(), "data", "markasi.sqlite");
-      if (!existsSync(/*turbopackIgnore: true*/ filename) && existsSync(/*turbopackIgnore: true*/ seedSource)) {
-        try {
-          copyFileSync(seedSource, filename);
-        } catch {
-          // ignore copy error
-        }
-      }
     } else {
       filename = join(process.cwd(), "data", "markasi.sqlite");
+    }
+  }
+  return filename;
+}
+
+export function resetDatabase(): void {
+  if (globalThis.markasiDatabase && globalThis.markasiDatabase.open) {
+    try {
+      globalThis.markasiDatabase.close();
+    } catch {}
+  }
+  globalThis.markasiDatabase = undefined;
+  globalThis.markasiSearchFunctionRegistered = false;
+}
+
+function openDatabase() {
+  const isVercel = Boolean(process.env.VERCEL || process.env.NOW_REGION);
+  const filename = getDatabasePath();
+  activeDbPath = filename;
+
+  if (isVercel) {
+    const seedSource = join(process.cwd(), "data", "markasi.sqlite");
+    if (!existsSync(/*turbopackIgnore: true*/ filename) && existsSync(/*turbopackIgnore: true*/ seedSource)) {
+      try {
+        copyFileSync(seedSource, filename);
+      } catch {
+        // ignore copy error
+      }
     }
   }
 
@@ -2850,4 +2872,261 @@ export function getDashboardStats() {
     ...rmaStats,
     currencyRates,
   };
+}
+
+// =========================================================================
+// STORE SNAPSHOT PERSISTENCE (Backup, Restore & Cloud Delta Engine)
+// =========================================================================
+
+export function exportSiteSnapshot() {
+  const db = getDatabase();
+  const settings = getSiteSettings();
+  const categories = db.prepare("SELECT * FROM categories ORDER BY sort_order ASC").all();
+  const products = listProducts({
+    includeCosts: true,
+    includeHiddenBrands: true,
+    includeHiddenCategories: true,
+  });
+  const sliders = listSlidersBanners();
+  const cmsPages = listCmsPages();
+  const shippingRules = db.prepare("SELECT * FROM shipping_rules").all();
+  const posInstallments = db.prepare("SELECT * FROM pos_installments").all();
+  const currencyRates = db.prepare("SELECT * FROM currency_rates").all();
+  const b2bGroups = db.prepare("SELECT * FROM b2b_groups").all();
+
+  return {
+    version: "2.0",
+    exportedAt: new Date().toISOString(),
+    settings,
+    categories,
+    products,
+    sliders,
+    cmsPages,
+    shippingRules,
+    posInstallments,
+    currencyRates,
+    b2bGroups,
+  };
+}
+
+export function importSiteSnapshot(snapshot: any) {
+  const db = getDatabase();
+  if (!snapshot || typeof snapshot !== "object") {
+    throw new Error("Geçersiz snapshot içeriği.");
+  }
+
+  return db.transaction(() => {
+    // 1. Site Settings
+    if (snapshot.settings && typeof snapshot.settings === "object") {
+      const setStmt = db.prepare(`
+        INSERT INTO site_settings (key, value, category) VALUES (?, ?, 'general')
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+      `);
+      for (const [k, v] of Object.entries(snapshot.settings)) {
+        if (typeof v === "string") setStmt.run(k, v);
+      }
+    }
+
+    // 2. Categories
+    if (Array.isArray(snapshot.categories)) {
+      const catStmt = db.prepare(`
+        INSERT INTO categories (
+          id, name, slug, parent_id, sort_order, icon, banner,
+          seo_title, seo_description, default_margin, is_vehicle_tree, active
+        ) VALUES (
+          @id, @name, @slug, @parent_id, @sort_order, @icon, @banner,
+          @seo_title, @seo_description, @default_margin, @is_vehicle_tree, @active
+        )
+        ON CONFLICT(id) DO UPDATE SET
+          name = excluded.name,
+          slug = excluded.slug,
+          parent_id = excluded.parent_id,
+          sort_order = excluded.sort_order,
+          icon = CASE WHEN excluded.icon <> '' THEN excluded.icon ELSE categories.icon END,
+          banner = CASE WHEN excluded.banner <> '' THEN excluded.banner ELSE categories.banner END,
+          seo_title = excluded.seo_title,
+          seo_description = excluded.seo_description,
+          default_margin = excluded.default_margin,
+          is_vehicle_tree = excluded.is_vehicle_tree,
+          active = excluded.active
+      `);
+      for (const cat of snapshot.categories) {
+        catStmt.run({
+          id: cat.id || cat.slug || slugify(cat.name),
+          name: cat.name,
+          slug: cat.slug || slugify(cat.name),
+          parent_id: cat.parent_id || null,
+          sort_order: cat.sort_order ?? 0,
+          icon: cat.icon || "",
+          banner: cat.banner || "",
+          seo_title: cat.seo_title || "",
+          seo_description: cat.seo_description || "",
+          default_margin: cat.default_margin ?? 20.0,
+          is_vehicle_tree: cat.is_vehicle_tree ? 1 : 0,
+          active: cat.active !== 0 ? 1 : 0,
+        });
+      }
+    }
+
+    // 3. Products
+    if (Array.isArray(snapshot.products)) {
+      for (const p of snapshot.products) {
+        db.prepare(`
+          INSERT INTO products (
+            id, brand, name, code, kind, category, price, cost, central_stock,
+            shelf, fitment, sku, barcode, oem_codes, manufacturer_brand,
+            condition, warranty_months, desi, weight_kg, corridor, bin,
+            discount_price, currency, vat_rate, source_url, source_last_price,
+            description, specs_json, compatible_vehicles, position, has_core_deposit, core_deposit_price
+          ) VALUES (
+            @id, @brand, @name, @code, @kind, @category, @price, @cost, @centralStock,
+            @shelf, @fitment, @sku, @barcode, @oemCodes, @manufacturerBrand,
+            @condition, @warrantyMonths, @desi, @weightKg, @corridor, @bin,
+            @discountPrice, @currency, @vatRate, @sourceUrl, @sourceLastPrice,
+            @description, @specsJson, @compatibleVehicles, @position, @hasCoreDeposit, @coreDepositPrice
+          )
+          ON CONFLICT(id) DO UPDATE SET
+            brand = excluded.brand,
+            name = excluded.name,
+            code = excluded.code,
+            kind = excluded.kind,
+            category = excluded.category,
+            price = excluded.price,
+            cost = excluded.cost,
+            central_stock = excluded.central_stock,
+            shelf = excluded.shelf,
+            fitment = excluded.fitment,
+            sku = excluded.sku,
+            barcode = excluded.barcode,
+            oem_codes = excluded.oem_codes,
+            manufacturer_brand = excluded.manufacturer_brand,
+            condition = excluded.condition,
+            warranty_months = excluded.warranty_months,
+            desi = excluded.desi,
+            weight_kg = excluded.weight_kg,
+            corridor = excluded.corridor,
+            bin = excluded.bin,
+            discount_price = excluded.discount_price,
+            currency = excluded.currency,
+            vat_rate = excluded.vat_rate,
+            source_url = excluded.source_url,
+            source_last_price = excluded.source_last_price,
+            description = excluded.description,
+            specs_json = excluded.specs_json,
+            compatible_vehicles = excluded.compatible_vehicles,
+            position = excluded.position,
+            has_core_deposit = excluded.has_core_deposit,
+            core_deposit_price = excluded.core_deposit_price
+        `).run({
+          id: p.id,
+          brand: p.brand || "",
+          name: p.name || "",
+          code: p.code || p.id,
+          kind: p.kind === "OEM" ? "OEM" : "Eşdeğer",
+          category: p.category || "",
+          price: typeof p.price === "number" ? p.price : 0,
+          cost: typeof p.cost === "number" ? p.cost : 0,
+          centralStock: typeof p.centralStock === "number" ? p.centralStock : 0,
+          shelf: p.shelf || "",
+          fitment: p.fitment || "",
+          sku: p.sku || p.code || "",
+          barcode: p.barcode || "",
+          oemCodes: JSON.stringify(Array.isArray(p.oemCodes) ? p.oemCodes : []),
+          manufacturerBrand: p.manufacturerBrand || p.brand || "",
+          condition: p.condition || "Sıfır",
+          warrantyMonths: p.warrantyMonths ?? 12,
+          desi: p.desi ?? 1.0,
+          weightKg: p.weightKg ?? 1.0,
+          corridor: p.corridor || "",
+          bin: p.bin || "",
+          discountPrice: p.discountPrice ?? 0,
+          currency: p.currency || "TL",
+          vatRate: p.vatRate ?? 20,
+          sourceUrl: p.sourceUrl || "",
+          sourceLastPrice: p.sourceLastPrice ?? 0,
+          description: p.description || "",
+          specsJson: typeof p.specsJson === "string" ? p.specsJson : JSON.stringify(p.specs || {}),
+          compatibleVehicles: JSON.stringify(Array.isArray(p.compatibleVehicles) ? p.compatibleVehicles : []),
+          position: p.position || "Yönsüz / Evrensel",
+          hasCoreDeposit: p.hasCoreDeposit ? 1 : 0,
+          coreDepositPrice: p.coreDepositPrice ?? 0,
+        });
+
+        // Restore images
+        if (Array.isArray(p.images) && p.images.length > 0) {
+          db.prepare("DELETE FROM product_images WHERE product_id = ?").run(p.id);
+          const imgStmt = db.prepare("INSERT INTO product_images (product_id, image_url, sort_order, is_primary) VALUES (?, ?, ?, ?)");
+          p.images.forEach((img: string, idx: number) => {
+            imgStmt.run(p.id, img, idx, idx === 0 ? 1 : 0);
+          });
+        }
+      }
+    }
+
+    // 4. Sliders
+    if (Array.isArray(snapshot.sliders)) {
+      const sStmt = db.prepare(`
+        INSERT INTO sliders_banners (
+          id, title, subtitle, image_desktop, image_mobile, link_url, button_text, position, sort_order, active
+        ) VALUES (
+          @id, @title, @subtitle, @image_desktop, @image_mobile, @link_url, @button_text, @position, @sort_order, @active
+        )
+        ON CONFLICT(id) DO UPDATE SET
+          title = excluded.title,
+          subtitle = excluded.subtitle,
+          image_desktop = excluded.image_desktop,
+          image_mobile = excluded.image_mobile,
+          link_url = excluded.link_url,
+          button_text = excluded.button_text,
+          position = excluded.position,
+          sort_order = excluded.sort_order,
+          active = excluded.active
+      `);
+      for (const s of snapshot.sliders) {
+        sStmt.run({
+          id: s.id,
+          title: s.title || "",
+          subtitle: s.subtitle || "",
+          image_desktop: s.imageDesktop || s.image_desktop || "",
+          image_mobile: s.imageMobile || s.image_mobile || "",
+          link_url: s.linkUrl || s.link_url || "",
+          button_text: s.buttonText || s.button_text || "",
+          position: s.position || "hero_slider",
+          sort_order: s.sortOrder ?? s.sort_order ?? 0,
+          active: s.active !== 0 ? 1 : 0,
+        });
+      }
+    }
+
+    // 5. CMS Pages
+    if (Array.isArray(snapshot.cmsPages)) {
+      const pStmt = db.prepare(`
+        INSERT INTO cms_pages (slug, title, content, seo_title, seo_description, active)
+        VALUES (@slug, @title, @content, @seo_title, @seo_description, @active)
+        ON CONFLICT(slug) DO UPDATE SET
+          title = excluded.title,
+          content = excluded.content,
+          seo_title = excluded.seo_title,
+          seo_description = excluded.seo_description,
+          active = excluded.active
+      `);
+      for (const pg of snapshot.cmsPages) {
+        pStmt.run({
+          slug: pg.slug,
+          title: pg.title || "",
+          content: pg.content || "",
+          seo_title: pg.seoTitle || pg.seo_title || "",
+          seo_description: pg.seoDescription || pg.seo_description || "",
+          active: pg.active !== false && pg.active !== 0 ? 1 : 0,
+        });
+      }
+    }
+
+    return {
+      success: true,
+      categoriesCount: snapshot.categories?.length || 0,
+      productsCount: snapshot.products?.length || 0,
+      settingsCount: Object.keys(snapshot.settings || {}).length,
+    };
+  })();
 }

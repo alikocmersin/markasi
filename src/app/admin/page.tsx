@@ -498,6 +498,60 @@ export default function EnterpriseAdminSuite() {
   // 10. Security & RBAC & Audit
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [adminUsers, setAdminUsers] = useState<any[]>([]);
+  const [restoringDb, setRestoringDb] = useState(false);
+  const [restoringSnapshot, setRestoringSnapshot] = useState(false);
+
+  const handleRestoreDb = async (file: File) => {
+    if (!file) return;
+    if (!confirm(`"${file.name}" veritabanı dosyasını yüklemek istediğinize emin misiniz? Mevcut veritabanının üzerine yazılacaktır.`)) {
+      return;
+    }
+    setRestoringDb(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/admin/security?action=restore-db", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Geri yükleme başarısız oldu.");
+      showToast(data.message || "Veritabanı başarıyla geri yüklendi!");
+      void loadInitialData();
+      void loadCategories();
+      void loadProducts();
+      void loadCms();
+    } catch (err: any) {
+      showToast(err.message, "error");
+    } finally {
+      setRestoringDb(false);
+    }
+  };
+
+  const handleRestoreSnapshot = async (file: File) => {
+    if (!file) return;
+    setRestoringSnapshot(true);
+    try {
+      const text = await file.text();
+      const snapshot = JSON.parse(text);
+      const res = await fetch("/api/admin/security?action=restore-snapshot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ snapshot }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Snapshot geri yüklenemedi.");
+      showToast(`Snapshot başarıyla yüklendi! (${data.productsCount || 0} ürün, ${data.categoriesCount || 0} kategori güncellendi)`);
+      void loadInitialData();
+      void loadCategories();
+      void loadProducts();
+      void loadCms();
+    } catch (err: any) {
+      showToast(err.message, "error");
+    } finally {
+      setRestoringSnapshot(false);
+    }
+  };
 
   // Helper for toasts
   const showToast = (text: string, type: "success" | "error" = "success") => {
@@ -1185,8 +1239,8 @@ async function compressImageFile(file: File, maxWidth = 1000, maxHeight = 1000, 
           if (customImg) {
             return {
               ...cat,
-              icon: cat.icon || customImg,
-              banner: cat.banner || customImg,
+              icon: customImg,
+              banner: customImg,
             };
           }
           return cat;
@@ -4412,6 +4466,123 @@ async function compressImageFile(file: File, maxWidth = 1000, maxHeight = 1000, 
         {/* ============================================================== */}
         {activeTab === "security" && (
           <div className="space-y-6">
+            {/* KART: VERİTABANI KALICILIK, CANLI YEDEK & GERİ YÜKLEME MERKEZİ */}
+            <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="border-b pb-4 mb-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <span className="grid size-10 place-items-center rounded-2xl bg-emerald-50 text-emerald-600">
+                    <Database size={20} />
+                  </span>
+                  <div>
+                    <h3 className="text-sm font-black text-slate-900">
+                      Veritabanı Kalıcılık, Canlı Yedek & Senkronizasyon Masası
+                    </h3>
+                    <p className="text-xs text-slate-500">
+                      Vercel sunucularında yapılan değişiklikleri kalıcı hale getirin, canlı veritabanını indirin veya geri yükleyin.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Bilgilendirme Kutusu: Vercel Serverless ve Kalıcılık Mantığı */}
+              <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-4 text-xs text-amber-900 mb-6">
+                <p className="font-extrabold flex items-center gap-1.5 mb-1.5">
+                  <AlertTriangle size={15} className="text-amber-600 shrink-0" />
+                  Vercel Serverless Mimarisi & Kalıcılık Bilgilendirmesi:
+                </p>
+                <p className="text-slate-700 leading-relaxed">
+                  Vercel sunucuları geçici (serverless lambda) çalıştığı için, sitede panelden yaptığınız ürün, kategori veya ayar değişiklikleri o anki geçici sunucu hafızasında tutulur ve sunucu uyku moduna geçtiğinde sıfırlanabilir.
+                  Yaptığınız değişiklikleri <strong>%100 kalıcı hale getirmek için</strong> aşağıdaki iki yöntemden birini kullanabilirsiniz:
+                </p>
+                <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3 text-[11px]">
+                  <div className="rounded-xl bg-white p-3 border border-amber-200 shadow-sm">
+                    <strong className="block text-slate-900 font-bold mb-1">Yöntem 1 (En Basit - 10 Saniye):</strong>
+                    <span>Panelden değişiklikleri tamamladıktan sonra <strong>"Canlı Veritabanını İndir (.sqlite)"</strong> butonuna basın. İndirilen dosyayı bilgisayarınızdaki <code>data/markasi.sqlite</code> dosyası ile değiştirip <code>git push</code> yapın. Vercel her zaman güncel veritabanıyla başlar.</span>
+                  </div>
+                  <div className="rounded-xl bg-white p-3 border border-amber-200 shadow-sm">
+                    <strong className="block text-slate-900 font-bold mb-1">Yöntem 2 (Otomatik Bulut Veritabanı):</strong>
+                    <span>Ücretsiz bir <strong>Turso (libsql)</strong> bulut SQLite hesabı açıp Vercel Ortam Değişkenlerine <code>TURSO_DATABASE_URL</code> ekleyin. Tüm değişiklikler anında ve otomatik olarak bulut veritabanına kaydedilir.</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Butonlar Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {/* 1. Canlı SQLite İndir */}
+                <a
+                  href="/api/admin/security?action=backup"
+                  className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-5 text-center transition hover:bg-emerald-50 hover:border-emerald-300 group"
+                >
+                  <span className="grid size-11 place-items-center rounded-xl bg-emerald-100 text-emerald-700 group-hover:scale-110 transition">
+                    <Download size={20} />
+                  </span>
+                  <div>
+                    <span className="block text-xs font-black text-slate-900">Canlı Veritabanını İndir</span>
+                    <span className="text-[10px] text-slate-500">.sqlite formatında tam canlı kopya</span>
+                  </div>
+                </a>
+
+                {/* 2. SQLite Geri Yükle */}
+                <label className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-5 text-center transition hover:bg-sky-50 hover:border-sky-300 group cursor-pointer">
+                  <span className="grid size-11 place-items-center rounded-xl bg-sky-100 text-sky-700 group-hover:scale-110 transition">
+                    {restoringDb ? <LoaderCircle size={20} className="animate-spin" /> : <Upload size={20} />}
+                  </span>
+                  <div>
+                    <span className="block text-xs font-black text-slate-900">
+                      {restoringDb ? "Yükleniyor..." : "Veritabanını Geri Yükle"}
+                    </span>
+                    <span className="text-[10px] text-slate-500">.sqlite dosyasını canlıya yükle</span>
+                  </div>
+                  <input
+                    type="file"
+                    accept=".sqlite,.db"
+                    disabled={restoringDb}
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) handleRestoreDb(file);
+                    }}
+                  />
+                </label>
+
+                {/* 3. JSON Snapshot İndir */}
+                <a
+                  href="/api/admin/security?action=snapshot"
+                  className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-5 text-center transition hover:bg-orange-50 hover:border-orange-300 group"
+                >
+                  <span className="grid size-11 place-items-center rounded-xl bg-orange-100 text-[#f36b2b] group-hover:scale-110 transition">
+                    <Sparkles size={20} />
+                  </span>
+                  <div>
+                    <span className="block text-xs font-black text-slate-900">Mağaza Snapshot'ı İndir</span>
+                    <span className="text-[10px] text-slate-500">Katalog, resim & ayarlar (.json)</span>
+                  </div>
+                </a>
+
+                {/* 4. JSON Snapshot Geri Yükle */}
+                <label className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-5 text-center transition hover:bg-purple-50 hover:border-purple-300 group cursor-pointer">
+                  <span className="grid size-11 place-items-center rounded-xl bg-purple-100 text-purple-700 group-hover:scale-110 transition">
+                    {restoringSnapshot ? <LoaderCircle size={20} className="animate-spin" /> : <FileText size={20} />}
+                  </span>
+                  <div>
+                    <span className="block text-xs font-black text-slate-900">
+                      {restoringSnapshot ? "Yükleniyor..." : "Snapshot Geri Yükle"}
+                    </span>
+                    <span className="text-[10px] text-slate-500">.json snapshot dosyasını uygula</span>
+                  </div>
+                  <input
+                    type="file"
+                    accept=".json"
+                    disabled={restoringSnapshot}
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) handleRestoreSnapshot(file);
+                    }}
+                  />
+                </label>
+              </div>
+            </div>
             <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
               <h3 className="text-sm font-black text-slate-900 flex items-center gap-2 mb-4">
                 <History size={16} className="text-[#f36b2b]" />
