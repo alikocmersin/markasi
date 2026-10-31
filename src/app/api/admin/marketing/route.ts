@@ -46,7 +46,7 @@ export async function POST(request: Request) {
     const phone = String(body.phone || "").trim();
     const email = String(body.email || "").trim();
     const partDescription = String(body.partDescription || body.partName || "").trim();
-    const amount = typeof body.amount === "number" ? (body.amount > 1000 ? Math.round(body.amount) : Math.round(body.amount * 100)) : 0;
+    const amount = typeof body.amount === "number" ? Math.round(body.amount * 100) : 0;
 
     if (!customerName || !phone || !partDescription || amount <= 0) {
       return NextResponse.json({ error: "Müşteri adı, telefon, parça tanımı ve geçerli tutar zorunludur." }, { status: 400 });

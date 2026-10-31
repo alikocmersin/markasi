@@ -321,8 +321,8 @@ export async function PATCH(request: Request) {
       code: body.code ? String(body.code).trim() : undefined,
       kind: body.kind === "OEM" ? "OEM" : body.kind === "Eşdeğer" ? "Eşdeğer" : undefined,
       category: body.category ? String(body.category).trim() : undefined,
-      price: typeof body.price === "number" ? (body.price > 1000 ? Math.round(body.price) : Math.round(body.price * 100)) : undefined,
-      cost: typeof body.cost === "number" ? (body.cost > 1000 ? Math.round(body.cost) : Math.round(body.cost * 100)) : undefined,
+      price: typeof body.price === "number" ? Math.round(body.price * 100) : undefined,
+      cost: typeof body.cost === "number" ? Math.round(body.cost * 100) : undefined,
       centralStock: typeof body.centralStock === "number" ? Math.max(0, Math.floor(body.centralStock)) : undefined,
       shelf: typeof body.shelf === "string" ? body.shelf.trim() : undefined,
       corridor: typeof body.corridor === "string" ? body.corridor.trim() : undefined,
@@ -336,7 +336,7 @@ export async function PATCH(request: Request) {
       warrantyMonths: typeof body.warrantyMonths === "number" ? body.warrantyMonths : undefined,
       desi: typeof body.desi === "number" ? body.desi : undefined,
       weightKg: typeof body.weightKg === "number" ? body.weightKg : undefined,
-      discountPrice: typeof body.discountPrice === "number" ? (body.discountPrice > 1000 ? Math.round(body.discountPrice) : Math.round(body.discountPrice * 100)) : undefined,
+      discountPrice: typeof body.discountPrice === "number" ? Math.round(body.discountPrice * 100) : undefined,
       currency: ["TL", "USD", "EUR"].includes(String(body.currency)) ? (body.currency as "TL" | "USD" | "EUR") : undefined,
       vatRate: typeof body.vatRate === "number" ? body.vatRate : undefined,
       description: typeof body.description === "string" ? body.description.trim() : undefined,
@@ -345,7 +345,7 @@ export async function PATCH(request: Request) {
       compatibleVehicles: Array.isArray(body.compatibleVehicles) ? body.compatibleVehicles : undefined,
       position: typeof body.position === "string" ? body.position.trim() : undefined,
       hasCoreDeposit: typeof body.hasCoreDeposit === "boolean" ? body.hasCoreDeposit : undefined,
-      coreDepositPrice: typeof body.coreDepositPrice === "number" ? (body.coreDepositPrice > 1000 ? Math.round(body.coreDepositPrice) : Math.round(body.coreDepositPrice * 100)) : undefined,
+      coreDepositPrice: typeof body.coreDepositPrice === "number" ? Math.round(body.coreDepositPrice * 100) : undefined,
     });
 
     if (updated) {
@@ -357,8 +357,8 @@ export async function PATCH(request: Request) {
 
   const updated = updateProductInline(productId, {
     centralStock: typeof body.centralStock === "number" ? body.centralStock : undefined,
-    price: typeof body.price === "number" ? (body.price > 1000 ? Math.round(body.price) : Math.round(body.price * 100)) : undefined,
-    cost: typeof body.cost === "number" ? (body.cost > 1000 ? Math.round(body.cost) : Math.round(body.cost * 100)) : undefined,
+    price: typeof body.price === "number" ? Math.round(body.price * 100) : undefined,
+    cost: typeof body.cost === "number" ? Math.round(body.cost * 100) : undefined,
     shelf: typeof body.shelf === "string" ? body.shelf : undefined,
     corridor: typeof body.corridor === "string" ? body.corridor : undefined,
     bin: typeof body.bin === "string" ? body.bin : undefined,

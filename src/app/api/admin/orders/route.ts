@@ -98,7 +98,11 @@ export async function PATCH(request: Request) {
         }
       }
 
-      database.prepare("UPDATE orders SET status = ? WHERE id = ?").run(nextStatus, id);
+      database
+        .prepare(
+          "UPDATE orders SET status = ?, shipping_status = CASE WHEN ? = 'Kargoya verildi' THEN 'Kargoya verildi' ELSE shipping_status END WHERE id = ?",
+        )
+        .run(nextStatus, nextStatus, id);
       return "updated";
     }).immediate();
 

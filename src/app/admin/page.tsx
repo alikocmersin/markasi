@@ -1002,8 +1002,34 @@ async function compressImageFile(file: File, maxWidth = 1000, maxHeight = 1000, 
       if (!res.ok) throw new Error(data.error || "Görsel yüklenemedi.");
       const url = data.urls?.[0] || data.url;
       if (url) {
-        setSelectedCategory((prev) => (prev ? { ...prev, [type]: url } : null));
-        showToast(`${type === "icon" ? "İkon" : "Banner"} başarıyla yüklendi!`);
+        const updatedCat = { ...selectedCategory, [type]: url };
+        setSelectedCategory(updatedCat);
+
+        // Dual-Sync to localStorage for permanent persistence across Vercel cold starts
+        try {
+          const currentMap = JSON.parse(localStorage.getItem("markasi_category_images") || "{}");
+          currentMap[updatedCat.name] = url;
+          if (updatedCat.slug) currentMap[updatedCat.slug] = url;
+          localStorage.setItem("markasi_category_images", JSON.stringify(currentMap));
+          window.dispatchEvent(new Event("markasi_categories_updated"));
+        } catch {}
+
+        // Auto-save immediately to database
+        const saveRes = await fetch("/api/admin/categories", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "upsert",
+            ...updatedCat,
+          }),
+        });
+
+        if (saveRes.ok) {
+          showToast(`${type === "icon" ? "İkon" : "Görsel"} başarıyla yüklendi ve anında kaydedildi!`);
+          void loadCategories();
+        } else {
+          showToast(`${type === "icon" ? "İkon" : "Görsel"} yüklendi ve tarayıcıya sabitlendi.`);
+        }
       }
     } catch (err: any) {
       showToast(err.message || "Yükleme hatası.", "error");
@@ -1143,12 +1169,32 @@ async function compressImageFile(file: File, maxWidth = 1000, maxHeight = 1000, 
 
   // Tab specific data loaders
   const loadCategories = useCallback(async () => {
+    let localSaved: Record<string, string> = {};
+    try {
+      const stored = localStorage.getItem("markasi_category_images");
+      if (stored) localSaved = JSON.parse(stored) || {};
+    } catch {}
+
     const res = await fetch("/api/admin/categories");
     if (res.ok) {
       const data = await res.json();
-      setCategoriesTree(data.categories || []);
-      if (!selectedCategory && data.categories.length > 0) {
-        setSelectedCategory(data.categories[0]);
+      let cats: CategoryItem[] = data.categories || [];
+      if (Object.keys(localSaved).length > 0) {
+        cats = cats.map((cat) => {
+          const customImg = localSaved[cat.name] || localSaved[cat.slug];
+          if (customImg) {
+            return {
+              ...cat,
+              icon: cat.icon || customImg,
+              banner: cat.banner || customImg,
+            };
+          }
+          return cat;
+        });
+      }
+      setCategoriesTree(cats);
+      if (!selectedCategory && cats.length > 0) {
+        setSelectedCategory(cats[0]);
       }
     }
   }, [selectedCategory]);
@@ -2261,6 +2307,16 @@ async function compressImageFile(file: File, maxWidth = 1000, maxHeight = 1000, 
                           }),
                         });
                         if (res.ok) {
+                          try {
+                            const currentMap = JSON.parse(localStorage.getItem("markasi_category_images") || "{}");
+                            const chosen = selectedCategory.icon || selectedCategory.banner;
+                            if (chosen) {
+                              currentMap[selectedCategory.name] = chosen;
+                              if (selectedCategory.slug) currentMap[selectedCategory.slug] = chosen;
+                            }
+                            localStorage.setItem("markasi_category_images", JSON.stringify(currentMap));
+                            window.dispatchEvent(new Event("markasi_categories_updated"));
+                          } catch {}
                           showToast("Kategori başarıyla kaydedildi!");
                           void loadCategories();
                         } else {
@@ -2357,7 +2413,23 @@ async function compressImageFile(file: File, maxWidth = 1000, maxHeight = 1000, 
                           {selectedCategory.banner && (
                             <button
                               type="button"
-                              onClick={() => setSelectedCategory({ ...selectedCategory, banner: "" })}
+                              onClick={async () => {
+                              const updated = { ...selectedCategory, banner: "" };
+                              setSelectedCategory(updated);
+                              try {
+                                const currentMap = JSON.parse(localStorage.getItem("markasi_category_images") || "{}");
+                                delete currentMap[selectedCategory.name];
+                                if (selectedCategory.slug) delete currentMap[selectedCategory.slug];
+                                localStorage.setItem("markasi_category_images", JSON.stringify(currentMap));
+                                window.dispatchEvent(new Event("markasi_categories_updated"));
+                              } catch {}
+                              await fetch("/api/admin/categories", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ action: "upsert", ...updated }),
+                              });
+                              showToast("Banner görseli kaldırıldı.");
+                            }}
                               className="text-[10px] font-bold text-red-600 hover:text-red-700 inline-flex items-center gap-1 hover:underline"
                             >
                               <Trash2 size={12} /> Görseli Kaldır
@@ -2415,7 +2487,23 @@ async function compressImageFile(file: File, maxWidth = 1000, maxHeight = 1000, 
                           {selectedCategory.icon && (
                             <button
                               type="button"
-                              onClick={() => setSelectedCategory({ ...selectedCategory, icon: "" })}
+                              onClick={async () => {
+                              const updated = { ...selectedCategory, icon: "" };
+                              setSelectedCategory(updated);
+                              try {
+                                const currentMap = JSON.parse(localStorage.getItem("markasi_category_images") || "{}");
+                                delete currentMap[selectedCategory.name];
+                                if (selectedCategory.slug) delete currentMap[selectedCategory.slug];
+                                localStorage.setItem("markasi_category_images", JSON.stringify(currentMap));
+                                window.dispatchEvent(new Event("markasi_categories_updated"));
+                              } catch {}
+                              await fetch("/api/admin/categories", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ action: "upsert", ...updated }),
+                              });
+                              showToast("İkon kaldırıldı.");
+                            }}
                               className="text-[10px] font-bold text-red-600 hover:text-red-700 inline-flex items-center gap-1 hover:underline"
                             >
                               <Trash2 size={12} /> İkonu Kaldır

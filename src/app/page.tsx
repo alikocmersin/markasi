@@ -482,17 +482,40 @@ export default function Home() {
   const [currentProductPage, setCurrentProductPage] = useState(1);
 
   useEffect(() => {
-    fetch("/api/categories")
-      .then((r) => r.json())
-      .then((d) => {
-        const map: Record<string, string> = {};
-        for (const c of d.categories || []) map[c.name] = c.image;
-        setCategoryImages(map);
-        if (Array.isArray(d.categories) && d.categories.length > 0) {
-          setDynamicCategories(d.categories);
-        }
-      })
-      .catch(() => {});
+    const syncCategories = () => {
+      let localMap: Record<string, string> = {};
+      try {
+        const stored = localStorage.getItem("markasi_category_images");
+        if (stored) localMap = JSON.parse(stored) || {};
+      } catch {}
+
+      fetch("/api/categories")
+        .then((r) => r.json())
+        .then((d) => {
+          const map: Record<string, string> = {};
+          for (const c of d.categories || []) {
+            map[c.name] = localMap[c.name] || localMap[c.slug] || c.image;
+          }
+          setCategoryImages(map);
+          if (Array.isArray(d.categories) && d.categories.length > 0) {
+            setDynamicCategories(
+              d.categories.map((c: any) => ({
+                ...c,
+                image: map[c.name] || c.image,
+              }))
+            );
+          }
+        })
+        .catch(() => {});
+    };
+
+    syncCategories();
+    window.addEventListener("markasi_categories_updated", syncCategories);
+    window.addEventListener("storage", syncCategories);
+    return () => {
+      window.removeEventListener("markasi_categories_updated", syncCategories);
+      window.removeEventListener("storage", syncCategories);
+    };
   }, []);
 
   useEffect(() => {

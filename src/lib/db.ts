@@ -666,6 +666,26 @@ function openDatabase() {
       .run(slug || `cat-${randomUUID().slice(0, 8)}`, slug || `cat-${randomUUID().slice(0, 8)}`, cat.name);
   }
 
+  const defaultCategorySvgs: Record<string, string> = {
+    "balata-fren": "/categories/balata-fren.svg",
+    "filtreler": "/categories/filtreler.svg",
+    "motor-parcalari": "/categories/motor-parcalari.svg",
+    "motor-yaglari": "/categories/motor-yaglari.svg",
+    "debriyaj-sistemi": "/categories/debriyaj.svg",
+    "suspansiyon": "/categories/suspansiyon.svg",
+    "yakit-sistemi": "/categories/yakit-sistemi.svg",
+  };
+  for (const [catSlug, catSvg] of Object.entries(defaultCategorySvgs)) {
+    database
+      .prepare(`
+        UPDATE categories
+        SET icon = CASE WHEN icon IS NULL OR icon = '' THEN ? ELSE icon END,
+            banner = CASE WHEN banner IS NULL OR banner = '' THEN ? ELSE banner END
+        WHERE slug = ? OR id = ?
+      `)
+      .run(catSvg, catSvg, catSlug, catSlug);
+  }
+
   // 2. Products Schema Migration
   addColumnIfNotExists(database, "products", "sku", "TEXT DEFAULT ''");
   addColumnIfNotExists(database, "products", "barcode", "TEXT DEFAULT ''");
