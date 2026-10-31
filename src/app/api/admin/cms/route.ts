@@ -13,6 +13,9 @@ import {
 } from "@/lib/db";
 import { readJsonObject } from "@/lib/request";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const slug = searchParams.get("page");
@@ -28,7 +31,16 @@ export async function GET(request: Request) {
   const sliders = listSlidersBanners();
   const pages = listCmsPages();
 
-  return NextResponse.json({ settings, sliders, pages });
+  return NextResponse.json(
+    { settings, sliders, pages },
+    {
+      headers: {
+        "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+        Pragma: "no-cache",
+        Expires: "0",
+      },
+    }
+  );
 }
 
 export async function PATCH(request: Request) {

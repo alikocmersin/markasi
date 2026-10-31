@@ -1211,6 +1211,12 @@ async function compressImageFile(file: File, maxWidth = 1000, maxHeight = 1000, 
   const handleSaveCmsSettings = async () => {
     setSavingCmsSettings(true);
     try {
+      // 1. Save to browser localStorage so settings NEVER get lost on Vercel cold starts
+      try {
+        localStorage.setItem("markasi_site_settings", JSON.stringify(siteSettings));
+      } catch {}
+
+      // 2. Persist to server API
       const res = await fetch("/api/admin/cms", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -1221,7 +1227,7 @@ async function compressImageFile(file: File, maxWidth = 1000, maxHeight = 1000, 
         showToast(err.error || "Ayarlar kaydedilemedi.", "error");
         return;
       }
-      showToast("Kurumsal bilgiler, vergi dairesi ve telefon ayarları başarıyla kaydedildi!");
+      showToast("Kurumsal bilgiler, vergi dairesi ve kayan yazı ayarları başarıyla kaydedildi!");
     } catch {
       showToast("Bağlantı hatası oluştu.", "error");
     } finally {
@@ -1230,15 +1236,47 @@ async function compressImageFile(file: File, maxWidth = 1000, maxHeight = 1000, 
   };
 
   const loadCms = useCallback(async () => {
-    const res = await fetch("/api/admin/cms");
-    if (res.ok) {
-      const data = await res.json();
-      setSiteSettings(data.settings || {});
-      setSliders(data.sliders || []);
-      setCmsPages(data.pages || []);
-      if (!selectedCmsPage && data.pages?.length > 0) {
-        setSelectedCmsPage(data.pages[0]);
+    // 1. Immediately restore from localStorage if exists
+    let localSaved: Record<string, string> | null = null;
+    try {
+      const stored = localStorage.getItem("markasi_site_settings");
+      if (stored) {
+        localSaved = JSON.parse(stored);
+        if (localSaved && typeof localSaved === "object") {
+          setSiteSettings((prev) => ({ ...prev, ...localSaved }));
+        }
       }
+    } catch {}
+
+    // 2. Fetch fresh from server (bypassing any browser/edge cache)
+    try {
+      const res = await fetch(`/api/admin/cms?_t=${Date.now()}`, { cache: "no-store" });
+      if (res.ok) {
+        const data = await res.json();
+        const serverSettings = data.settings || {};
+        // Merge server settings with local saved settings
+        const mergedSettings = localSaved ? { ...serverSettings, ...localSaved } : serverSettings;
+        setSiteSettings(mergedSettings);
+        setSliders(data.sliders || []);
+        setCmsPages(data.pages || []);
+        if (!selectedCmsPage && data.pages?.length > 0) {
+          setSelectedCmsPage(data.pages[0]);
+        }
+        // If local settings had custom edits (e.g. tax_office, phone, marquee) that server lacks, re-sync to server
+        if (
+          localSaved &&
+          ((localSaved.tax_office && localSaved.tax_office !== serverSettings.tax_office) ||
+           (localSaved.marquee_text && localSaved.marquee_text !== serverSettings.marquee_text))
+        ) {
+          fetch("/api/admin/cms", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ section: "settings", settings: mergedSettings }),
+          }).catch(() => {});
+        }
+      }
+    } catch (e) {
+      console.warn("loadCms fetch error:", e);
     }
   }, [selectedCmsPage]);
 
@@ -3950,7 +3988,97 @@ async function compressImageFile(file: File, maxWidth = 1000, maxHeight = 1000, 
               </div>
             </div>
 
-            {/* KART 3: SİTE BAŞLIĞI, SLOGAN & DUYURU BANDI */}
+            {/* KART 3: EN ÜST TURUNCU KAYAN YAZI BANDI (MARQUEE) */}
+            <div className="rounded-3xl border border-orange-300 bg-orange-50/50 p-6 shadow-sm">
+              <div className="border-b border-orange-200 pb-4 mb-5 flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <span className="grid size-8 place-items-center rounded-xl bg-[#f36b2b] text-white shadow-sm">
+                    <Radio size={17} />
+                  </span>
+                  <div>
+                    <h4 className="text-sm font-black text-slate-900">En Üst Turuncu Kayan Yazı Bandı (Marquee)</h4>
+                    <p className="text-[11px] text-slate-500">Sitenin en tepesinde kesintisiz akan duyuru metni ("Kampanyalar için bizi takip edin" alanı)</p>
+                  </div>
+                </div>
+                <span className="rounded-full bg-orange-200/70 border border-orange-300 px-3 py-1 text-[10px] font-black uppercase text-[#e65f26]">
+                  Canlı Kayan Marquee
+                </span>
+              </div>
+
+              <div className="space-y-4 text-xs">
+                <div>
+                  <label className="font-bold text-slate-800 block mb-1">
+                    Kayan Yazı Metni:
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={
+                      siteSettings.marquee_text !== undefined
+                        ? siteSettings.marquee_text
+                        : "Markasi Otomotiv — Orijinal ve eşdeğer yedek parçalar, anlık stok ve tedarikçi fiyatları ile hizmetinizde. Kampanyalar için bizi takip edin!"
+                    }
+                    onChange={(e) => setSiteSettings({ ...siteSettings, marquee_text: e.target.value })}
+                    placeholder="Markasi Otomotiv — Orijinal ve eşdeğer yedek parçalar, anlık stok ve tedarikçi fiyatları ile hizmetinizde. Kampanyalar için bizi takip edin!"
+                    className="w-full rounded-xl border border-orange-300 bg-white p-3 font-semibold text-slate-800 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+                  />
+                  <p className="mt-1 text-[10px] text-slate-500">
+                    💡 İpucu: Buraya yazdığınız metin sitenin en üstünde turuncu arka plan üzerinde sürekli olarak kayacaktır.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Kayan Yazı Durumu:</label>
+                    <select
+                      value={siteSettings.marquee_enabled !== "0" && siteSettings.marquee_enabled !== "false" ? "1" : "0"}
+                      onChange={(e) => setSiteSettings({ ...siteSettings, marquee_enabled: e.target.value })}
+                      className="w-full rounded-xl border border-slate-200 bg-white p-2.5 font-bold text-slate-700 outline-none"
+                    >
+                      <option value="1">✓ Açık (Sitede Göster)</option>
+                      <option value="0">✕ Kapalı (Gizle)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Bant Arka Plan Rengi:</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="color"
+                        value={siteSettings.marquee_bg || "#f36b2b"}
+                        onChange={(e) => setSiteSettings({ ...siteSettings, marquee_bg: e.target.value })}
+                        className="size-9 cursor-pointer rounded-lg border p-0.5"
+                      />
+                      <input
+                        type="text"
+                        value={siteSettings.marquee_bg || "#f36b2b"}
+                        onChange={(e) => setSiteSettings({ ...siteSettings, marquee_bg: e.target.value })}
+                        className="w-full rounded-xl border border-slate-200 p-2 font-mono text-xs uppercase"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Bant Yazı Rengi:</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="color"
+                        value={siteSettings.marquee_color || "#ffffff"}
+                        onChange={(e) => setSiteSettings({ ...siteSettings, marquee_color: e.target.value })}
+                        className="size-9 cursor-pointer rounded-lg border p-0.5"
+                      />
+                      <input
+                        type="text"
+                        value={siteSettings.marquee_color || "#ffffff"}
+                        onChange={(e) => setSiteSettings({ ...siteSettings, marquee_color: e.target.value })}
+                        className="w-full rounded-xl border border-slate-200 p-2 font-mono text-xs uppercase"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* KART 4: SİTE BAŞLIĞI, SLOGAN & SABİT KARGO DUYURUSU (LACİVERT BANT) */}
             <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
               <div className="border-b pb-4 mb-5 flex items-center justify-between">
                 <div className="flex items-center gap-2.5">

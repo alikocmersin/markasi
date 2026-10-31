@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
 import { getSiteSettings } from "@/lib/db";
+import { MarqueeBar } from "@/components/marquee-bar";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -84,13 +85,14 @@ export default function RootLayout({
         )}
       </head>
       <body className="min-h-full flex flex-col">
-      <div className="overflow-hidden bg-[#f36b2b] text-white text-xs font-bold py-1">
-        <div className="animate-marquee">
-          Markasi Otomotiv — Orijinal ve eşdeğer yedek parçalar, anlık stok ve tedarikçi fiyatları ile hizmetinizde. Kampanyalar için bizi takip edin!
-        </div>
-      </div>
-      {children}
-    </body>
+        <MarqueeBar
+          initialText={settings.marquee_text}
+          initialEnabled={settings.marquee_enabled}
+          initialBg={settings.marquee_bg}
+          initialColor={settings.marquee_color}
+        />
+        {children}
+      </body>
     </html>
   );
 }

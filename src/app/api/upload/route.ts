@@ -17,7 +17,7 @@ export async function POST(request: Request) {
 
     const filesToProcess = files.length > 0 ? files : singleFile ? [singleFile] : [];
     if (filesToProcess.length === 0) {
-      return NextResponse.json({ error: "Lütfen en az bir resim dosyası seçin." }, { status: 400 });
+      return NextResponse.json({ error: "Bacanak en az bir resim dosyası seç" }, { status: 400 });
     }
 
     const uploadDir = join(process.cwd(), "public", "uploads", "products");

@@ -452,11 +452,26 @@ export default function Home() {
   const [activeSliderIndex, setActiveSliderIndex] = useState(0);
 
   useEffect(() => {
-    fetch("/api/admin/cms", { cache: "no-store" })
+    // 1. Instant fallback from localStorage
+    let localSaved: Record<string, string> | null = null;
+    try {
+      const stored = localStorage.getItem("markasi_site_settings");
+      if (stored) {
+        localSaved = JSON.parse(stored);
+        if (localSaved && typeof localSaved === "object") {
+          setCmsSettings((prev) => ({ ...prev, ...localSaved }));
+        }
+      }
+    } catch {}
+
+    // 2. Fresh dynamic load from server bypassing any cache
+    fetch(`/api/admin/cms?_t=${Date.now()}`, { cache: "no-store" })
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (!data) return;
-        if (data.settings) setCmsSettings(data.settings);
+        const serverSettings = data.settings || {};
+        const merged = localSaved ? { ...serverSettings, ...localSaved } : serverSettings;
+        setCmsSettings(merged);
         if (data.sliders) setCmsSliders(data.sliders);
         if (data.pages) setCmsPages(data.pages);
       })
