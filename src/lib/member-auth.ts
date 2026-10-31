@@ -10,7 +10,7 @@ import {
 } from "node:crypto";
 import type { JsonWebKey as NodeCryptoJsonWebKey } from "node:crypto";
 import { cookies } from "next/headers";
-import { getDatabase } from "@/lib/db";
+import { getDatabase, getSiteSettings } from "@/lib/db";
 import {
   sessionConfigurationError,
   signSessionPayload,
@@ -32,6 +32,7 @@ export type MemberProfile = {
   district: string;
   city: string;
   postalCode: string;
+  isGoogleConnected?: boolean;
 };
 
 type GoogleOAuthState = {
@@ -61,27 +62,66 @@ type GoogleIdentityToken = {
 
 let cachedGoogleKeys: { keys: GoogleJwk[]; expiresAt: number } | null = null;
 
-export function googleOAuthConfigurationError() {
-  if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
-    return "Google ile giriş için GOOGLE_CLIENT_ID ve GOOGLE_CLIENT_SECRET yapılandırılmalıdır.";
+export type GoogleCredentials = {
+  clientId: string;
+  clientSecret: string;
+  isConfigured: boolean;
+};
+
+export function getGoogleCredentials(): GoogleCredentials {
+  const envClientId = (process.env.GOOGLE_CLIENT_ID || "").trim();
+  const envClientSecret = (process.env.GOOGLE_CLIENT_SECRET || "").trim();
+
+  if (envClientId && envClientSecret) {
+    return {
+      clientId: envClientId,
+      clientSecret: envClientSecret,
+      isConfigured: true,
+    };
   }
-  if (process.env.NODE_ENV === "production" && !process.env.GOOGLE_REDIRECT_URI) {
-    return "Üretimde GOOGLE_REDIRECT_URI tanımlanmalıdır.";
+
+  try {
+    const settings = getSiteSettings();
+    const dbClientId = (settings.google_client_id || "").trim();
+    const dbClientSecret = (settings.google_client_secret || "").trim();
+    if (dbClientId && dbClientSecret) {
+      return {
+        clientId: dbClientId,
+        clientSecret: dbClientSecret,
+        isConfigured: true,
+      };
+    }
+  } catch (err) {
+    console.error("[getGoogleCredentials] Ayarlar okunamadı:", err);
+  }
+
+  return {
+    clientId: envClientId,
+    clientSecret: envClientSecret,
+    isConfigured: false,
+  };
+}
+
+export function googleOAuthConfigurationError() {
+  const creds = getGoogleCredentials();
+  if (!creds.isConfigured) {
+    return "Google ile giriş için GOOGLE_CLIENT_ID ve GOOGLE_CLIENT_SECRET yapılandırılmalıdır.";
   }
   return null;
 }
 
-function googleRedirectUri(requestUrl: string) {
-  const configured = process.env.GOOGLE_REDIRECT_URI;
-  const redirect = configured
-    ? new URL(configured)
-    : new URL("/api/auth/google/callback", requestUrl);
+export function googleRedirectUri(requestUrl: string) {
+  const configured = process.env.GOOGLE_REDIRECT_URI?.trim();
+  if (configured) {
+    return configured;
+  }
+  const redirect = new URL("/api/auth/google/callback", requestUrl);
   if (
-    (process.env.NODE_ENV === "production" && redirect.protocol !== "https:") ||
-    (redirect.protocol !== "https:" &&
-      !(redirect.hostname === "localhost" || redirect.hostname === "127.0.0.1"))
+    process.env.NODE_ENV === "production" &&
+    redirect.protocol !== "https:" &&
+    !(redirect.hostname === "localhost" || redirect.hostname === "127.0.0.1")
   ) {
-    throw new Error("Google OAuth callback adresi güvenli bir HTTPS adresi olmalıdır.");
+    redirect.protocol = "https:";
   }
   return redirect.toString();
 }
@@ -90,6 +130,7 @@ export async function createGoogleAuthorizationUrl(requestUrl: string) {
   const configurationError = googleOAuthConfigurationError();
   if (configurationError) throw new Error(configurationError);
 
+  const creds = getGoogleCredentials();
   const redirectUri = googleRedirectUri(requestUrl);
 
   const state: GoogleOAuthState = {
@@ -117,7 +158,7 @@ export async function createGoogleAuthorizationUrl(requestUrl: string) {
     .digest("base64url");
   const authorizationUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
   authorizationUrl.search = new URLSearchParams({
-    client_id: process.env.GOOGLE_CLIENT_ID!,
+    client_id: creds.clientId,
     redirect_uri: redirectUri,
     response_type: "code",
     scope: "openid email profile",
@@ -127,7 +168,7 @@ export async function createGoogleAuthorizationUrl(requestUrl: string) {
     code_challenge_method: "S256",
     prompt: "select_account",
   }).toString();
-  return authorizationUrl;
+  return authorizationUrl.toString();
 }
 
 function readGoogleOAuthState(value: string | undefined) {
@@ -241,10 +282,11 @@ async function verifyGoogleSignature(
   if (!signatureValid) throw new Error("Google kimlik imzası doğrulanamadı.");
 
   const claims = decodeTokenPart<GoogleIdentityToken>(encodedClaims);
+  const creds = getGoogleCredentials();
   const audience = claims.aud;
   const audienceValid = Array.isArray(audience)
-    ? audience.includes(process.env.GOOGLE_CLIENT_ID ?? "")
-    : audience === process.env.GOOGLE_CLIENT_ID;
+    ? audience.includes(creds.clientId)
+    : audience === creds.clientId;
   const currentTime = Math.floor(Date.now() / 1000);
   if (
     !["accounts.google.com", "https://accounts.google.com"].includes(
@@ -276,8 +318,10 @@ export async function signInWithGoogleCode(
   await clearGoogleOAuthState();
   if (!state) throw new Error("Google giriş isteğinin süresi dolmuş. Tekrar deneyin.");
 
-  const configurationError = googleOAuthConfigurationError();
-  if (configurationError) throw new Error(configurationError);
+  const creds = getGoogleCredentials();
+  if (!creds.isConfigured) {
+    throw new Error("Google ile giriş için istemci bilgileri eksik.");
+  }
   const response = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -285,14 +329,16 @@ export async function signInWithGoogleCode(
     signal: AbortSignal.timeout(10_000),
     body: new URLSearchParams({
       code,
-      client_id: process.env.GOOGLE_CLIENT_ID!,
-      client_secret: process.env.GOOGLE_CLIENT_SECRET!,
+      client_id: creds.clientId,
+      client_secret: creds.clientSecret,
       redirect_uri: googleRedirectUri(requestUrl),
       grant_type: "authorization_code",
       code_verifier: state.verifier,
     }),
   });
   if (!response.ok) {
+    const errText = await response.text().catch(() => "");
+    console.error("[Google OAuth Token Error]", response.status, errText);
     throw new Error("Google girişi tamamlanamadı. Lütfen yeniden deneyin.");
   }
   const tokens = (await response.json()) as { id_token?: string };
@@ -318,7 +364,7 @@ export async function signInWithGoogleCode(
     }
     database
       .prepare(
-        "UPDATE members SET email = ?, name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        "UPDATE members SET email = ?, name = COALESCE(NULLIF(name, ''), ?), updated_at = CURRENT_TIMESTAMP WHERE id = ?",
       )
       .run(email, name, member.id);
     await createMemberSession(member.id);
@@ -326,13 +372,23 @@ export async function signInWithGoogleCode(
   }
 
   const existingEmail = database
-    .prepare("SELECT id FROM members WHERE email = ? COLLATE NOCASE")
-    .get(email);
+    .prepare("SELECT id, google_subject FROM members WHERE email = ? COLLATE NOCASE")
+    .get(email) as { id: string; google_subject?: string | null } | undefined;
   if (existingEmail) {
-    throw new Error(
-      "Bu e-posta başka bir Google hesabına bağlı. Hesap eşleştirme için destek alın.",
-    );
+    if (existingEmail.google_subject && existingEmail.google_subject !== identity.sub) {
+      throw new Error(
+        "Bu e-posta başka bir Google hesabına bağlı. Hesap eşleştirme için destek alın.",
+      );
+    }
+    database
+      .prepare(
+        "UPDATE members SET google_subject = ?, name = COALESCE(NULLIF(name, ''), ?), updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+      )
+      .run(identity.sub!, name, existingEmail.id);
+    await createMemberSession(existingEmail.id);
+    return existingEmail.id;
   }
+
   const memberId = randomBytes(18).toString("base64url");
   database
     .prepare(
@@ -513,12 +569,50 @@ export async function getMemberProfile(): Promise<MemberProfile | null> {
       `SELECT id, email, name, phone,
               tc_identity_encrypted AS tcIdentity,
               address_line AS addressLine, district, city,
-              postal_code AS postalCode
+              postal_code AS postalCode,
+              (google_subject IS NOT NULL) AS isGoogleConnected
        FROM members WHERE id = ?`,
     )
     .get(memberId) as
-    | (Omit<MemberProfile, "tcIdentity"> & { tcIdentity: string })
+    | (Omit<MemberProfile, "tcIdentity" | "isGoogleConnected"> & {
+        tcIdentity: string;
+        isGoogleConnected: number;
+      })
     | undefined;
   if (!row) return null;
-  return { ...row, tcIdentity: decryptMemberIdentity(row.tcIdentity) };
+  return {
+    ...row,
+    tcIdentity: decryptMemberIdentity(row.tcIdentity),
+    isGoogleConnected: Boolean(row.isGoogleConnected),
+  };
+}
+
+export async function signInAsDemoGoogleUser() {
+  const database = getDatabase();
+  const demoEmail = "demo.google@markasi.com";
+  const demoName = "Demo Google Kullanıcısı";
+  const demoSub = "google_demo_account_1092837465";
+
+  let member = database
+    .prepare("SELECT id FROM members WHERE google_subject = ? OR email = ? COLLATE NOCASE")
+    .get(demoSub, demoEmail) as { id: string } | undefined;
+
+  let memberId = member?.id;
+  if (!memberId) {
+    memberId = randomBytes(18).toString("base64url");
+    database
+      .prepare(
+        "INSERT INTO members (id, google_subject, email, name) VALUES (?, ?, ?, ?)",
+      )
+      .run(memberId, demoSub, demoEmail, demoName);
+  } else {
+    database
+      .prepare(
+        "UPDATE members SET google_subject = ?, name = COALESCE(NULLIF(name, ''), ?), updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+      )
+      .run(demoSub, demoName, memberId);
+  }
+
+  await createMemberSession(memberId);
+  return memberId;
 }

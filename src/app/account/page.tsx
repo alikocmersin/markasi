@@ -27,11 +27,17 @@ type MemberProfile = {
   district: string;
   city: string;
   postalCode: string;
+  isGoogleConnected?: boolean;
+};
+
+const noticeMessages: Record<string, string> = {
+  google_demo_success: "⚡ Google demo test hesabı ile başarıyla giriş yapıldı.",
+  google_login_success: "Google hesabınız ile başarıyla giriş yapıldı.",
 };
 
 const errorMessages: Record<string, string> = {
   google_not_configured:
-    "Google ile giriş henüz etkin değil. Google Cloud Console'dan aldığınız GOOGLE_CLIENT_ID ve GOOGLE_CLIENT_SECRET değerlerini proje kökündeki .env.local dosyasına ekleyin. Yönlendirme adresi http://localhost:3000/api/auth/google/callback olmalı; ardından geliştirme sunucusunu yeniden başlatın. Ayrıntılar README.md içindeki Google üye girişi bölümünde.",
+    "Google OAuth kimlik bilgileri henüz tanımlanmamış. Yönetim Paneli > Web Tasarım & CMS > Google Entegrasyonu alanından Client ID ve Secret kaydedebilir veya aşağıdaki butondan Demo Modu ile hemen test edebilirsiniz.",
   google_unavailable:
     "Google girişi şu anda başlatılamıyor. Lütfen daha sonra tekrar deneyin.",
   google_account_conflict:
@@ -59,8 +65,10 @@ export default function AccountPage() {
   const [loadingOrders, setLoadingOrders] = useState(false);
 
   useEffect(() => {
-    const queryError = new URLSearchParams(window.location.search).get("error");
-    if (queryError) {
+    const search = new URLSearchParams(window.location.search);
+    const queryError = search.get("error");
+    const queryNotice = search.get("notice");
+    if (queryError || queryNotice) {
       window.history.replaceState({}, "", window.location.pathname);
     }
     void fetch("/api/member/profile", { cache: "no-store" })
@@ -90,6 +98,9 @@ export default function AccountPage() {
       )
       .finally(() => {
         setLoading(false);
+        if (queryNotice) {
+          setMessage(noticeMessages[queryNotice] ?? "İşlem başarıyla tamamlandı.");
+        }
         if (queryError) {
           setError(
             errorMessages[queryError] ??
@@ -232,7 +243,14 @@ export default function AccountPage() {
               <>
                 <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
                   <div>
-                    <p className="text-sm font-bold">{profile.email}</p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-sm font-bold">{profile.email}</p>
+                      {profile.isGoogleConnected && (
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-bold text-emerald-700 border border-emerald-200">
+                          <GoogleMark /> Google ile Bağlı
+                        </span>
+                      )}
+                    </div>
                     <p className="mt-1 text-xs text-slate-500">
                       İletişim ve teslimat bilgilerinizi istediğiniz zaman
                       düzenleyebilirsiniz.
@@ -548,11 +566,19 @@ export default function AccountPage() {
                 </div>
                 <a
                   href="/api/auth/google"
-                  className="flex h-12 items-center justify-center gap-3 rounded-xl border border-slate-300 bg-white px-5 text-sm font-bold text-slate-700 shadow-sm transition hover:bg-slate-50"
+                  className="flex h-12 items-center justify-center gap-3 rounded-xl border border-slate-300 bg-white px-5 text-sm font-bold text-slate-700 shadow-sm transition hover:bg-slate-50 hover:border-slate-400"
                 >
                   <GoogleMark />
-                  Google ile devam et
+                  {authMode === "register" ? "Google ile Kayıt Ol" : "Google ile Devam Et"}
                 </a>
+                <div className="mt-3 text-center">
+                  <a
+                    href="/api/auth/google?demo=1"
+                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-[#f36b2b] transition"
+                  >
+                    <span>⚡ Demo Google Girişi ile Hızlı Test Et</span>
+                  </a>
+                </div>
                 {authMode === "register" && (
                   <p className="mt-4 text-[11px] leading-5 text-slate-400">
                     Teslimat adresi ve iletişim bilgilerinizi üye olduktan

@@ -4242,7 +4242,126 @@ async function compressImageFile(file: File, maxWidth = 1000, maxHeight = 1000, 
               </div>
             </div>
 
-            {/* CMS Sayfaları Düzenleyici */}
+                        {/* KART 5: GOOGLE İLE GİRİŞ & ÜYE OLMA (OAUTH 2.0 ENTEGRASYONU) */}
+            <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="border-b pb-4 mb-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <span className="grid size-9 place-items-center rounded-xl bg-orange-50 text-[#f36b2b]">
+                    <Globe size={18} />
+                  </span>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-sm font-black text-slate-900">Google ile Giriş & Üye Olma (OAuth 2.0)</h4>
+                      {siteSettings.google_client_id && siteSettings.google_client_secret ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-[10px] font-bold text-emerald-700">
+                          <CheckCircle2 size={12} /> Yapılandırıldı
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-[10px] font-bold text-amber-700">
+                          Demo Modu Aktif
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-slate-500">
+                      Müşterilerinizin tek tıkla Google hesaplarıyla üye olmasını veya giriş yapmasını sağlayın.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <a
+                    href="/account"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-100 transition"
+                  >
+                    <ExternalLink size={13} /> Giriş Sayfasını Gör
+                  </a>
+                  <a
+                    href="/api/auth/google?demo=1"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 px-3 py-1.5 text-xs font-bold text-white hover:bg-slate-800 transition"
+                  >
+                    ⚡ Demo Girişi Test Et
+                  </a>
+                </div>
+              </div>
+
+              {/* Bilgilendirme ve Kurulum Adımları */}
+              <div className="rounded-2xl border border-sky-100 bg-sky-50/70 p-4 text-xs text-sky-900 mb-5">
+                <p className="font-bold mb-1">📌 Google Cloud Console Yapılandırması:</p>
+                <p className="text-slate-600 mb-2">
+                  Google Cloud Console (console.cloud.google.com) &gt; APIs & Services &gt; Credentials &gt; Create Credentials &gt; OAuth client ID seçin.
+                  Web Application türünü seçip aşağıdaki <strong>Authorized redirect URIs (Yetkili Yönlendirme Adresleri)</strong> alanına ekleyin:
+                </p>
+                <div className="space-y-1.5 font-mono text-[11px]">
+                  <div className="flex items-center justify-between rounded-lg bg-white p-2 border border-sky-200 text-slate-800">
+                    <span className="truncate">https://markasioto.vercel.app/api/auth/google/callback</span>
+                    <span className="text-[10px] text-slate-400 font-sans ml-2">(Canlı / Vercel)</span>
+                  </div>
+                  <div className="flex items-center justify-between rounded-lg bg-white p-2 border border-sky-200 text-slate-800">
+                    <span className="truncate">http://localhost:3000/api/auth/google/callback</span>
+                    <span className="text-[10px] text-slate-400 font-sans ml-2">(Yerel Test)</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 text-xs">
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">
+                    Google Client ID (İstemci Kimliği):
+                  </label>
+                  <input
+                    type="text"
+                    value={siteSettings.google_client_id || ""}
+                    onChange={(e) => setSiteSettings({ ...siteSettings, google_client_id: e.target.value })}
+                    placeholder="Örn. 123456789-abcdef.apps.googleusercontent.com"
+                    className="w-full rounded-xl border border-slate-200 p-2.5 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 font-medium font-mono text-xs"
+                  />
+                  <p className="mt-1 text-[10px] text-slate-400">
+                    Google Cloud Console'dan aldığınız OAuth 2.0 İstemci Kimliği.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">
+                    Google Client Secret (Gizli Anahtar):
+                  </label>
+                  <input
+                    type="password"
+                    value={siteSettings.google_client_secret || ""}
+                    onChange={(e) => setSiteSettings({ ...siteSettings, google_client_secret: e.target.value })}
+                    placeholder="Örn. GOCSPX-xxxxxxxxxxxxxxxxxxxx"
+                    className="w-full rounded-xl border border-slate-200 p-2.5 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 font-medium font-mono text-xs"
+                  />
+                  <p className="mt-1 text-[10px] text-slate-400">
+                    Google Cloud Console'dan aldığınız İstemci Gizli Anahtarı.
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-6 flex justify-end border-t pt-4">
+                <button
+                  onClick={handleSaveCmsSettings}
+                  disabled={savingCmsSettings}
+                  className="inline-flex items-center gap-2 rounded-xl bg-[#f36b2b] px-6 py-2.5 text-xs font-black text-white hover:bg-[#df5b20] shadow-md transition disabled:opacity-50"
+                >
+                  {savingCmsSettings ? (
+                    <>
+                      <LoaderCircle size={15} className="animate-spin" />
+                      Kaydediliyor...
+                    </>
+                  ) : (
+                    <>
+                      <Save size={15} />
+                      Google Ayarlarını Kaydet ve Yayınla
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
+{/* CMS Sayfaları Düzenleyici */}
             <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
               <h3 className="text-sm font-black text-slate-900 mb-4">Kurumsal Sayfa Metinleri (Hakkımızda, Sözleşmeler)</h3>
               <div className="flex gap-2 border-b pb-3 mb-4 overflow-x-auto text-xs">
