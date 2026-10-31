@@ -1403,6 +1403,29 @@ export function upsertCategory(data: {
         .prepare("UPDATE products SET category = ? WHERE category = ? COLLATE NOCASE OR normalize_product_search(category) = normalize_product_search(?)")
         .run(data.name, existing.name, existing.name);
     }
+
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { pushToTurso } = require("./turso");
+      pushToTurso(
+        `INSERT INTO categories (id, name, slug, parent_id, sort_order, icon, banner, seo_title, seo_description, default_margin, is_vehicle_tree, active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(name) DO UPDATE SET id=excluded.id, slug=excluded.slug, parent_id=excluded.parent_id, sort_order=excluded.sort_order, icon=excluded.icon, banner=excluded.banner, seo_title=excluded.seo_title, seo_description=excluded.seo_description, default_margin=excluded.default_margin, is_vehicle_tree=excluded.is_vehicle_tree, active=excluded.active;`,
+        [
+          existing.id || id,
+          data.name,
+          slug,
+          data.parentId || null,
+          data.sortOrder ?? 0,
+          data.icon ?? "",
+          data.banner ?? "",
+          data.seoTitle ?? "",
+          data.seoDescription ?? "",
+          data.defaultMargin ?? 20.0,
+          data.isVehicleTree ? 1 : 0,
+          data.active !== false ? 1 : 0,
+        ]
+      );
+    } catch {}
+
     return { id: existing.id || id, created: false };
   } else {
     database
@@ -1424,6 +1447,29 @@ export function upsertCategory(data: {
         isVehicleTree: data.isVehicleTree ? 1 : 0,
         active: data.active !== false ? 1 : 0,
       });
+
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { pushToTurso } = require("./turso");
+      pushToTurso(
+        `INSERT INTO categories (id, name, slug, parent_id, sort_order, icon, banner, seo_title, seo_description, default_margin, is_vehicle_tree, active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(name) DO UPDATE SET id=excluded.id, slug=excluded.slug, parent_id=excluded.parent_id, sort_order=excluded.sort_order, icon=excluded.icon, banner=excluded.banner, seo_title=excluded.seo_title, seo_description=excluded.seo_description, default_margin=excluded.default_margin, is_vehicle_tree=excluded.is_vehicle_tree, active=excluded.active;`,
+        [
+          id,
+          data.name,
+          slug,
+          data.parentId || null,
+          data.sortOrder ?? 0,
+          data.icon ?? "",
+          data.banner ?? "",
+          data.seoTitle ?? "",
+          data.seoDescription ?? "",
+          data.defaultMargin ?? 20.0,
+          data.isVehicleTree ? 1 : 0,
+          data.active !== false ? 1 : 0,
+        ]
+      );
+    } catch {}
+
     return { id, created: true };
   }
 }
@@ -1445,6 +1491,11 @@ export function deleteCategory(idOrName: string, reassignToIdOrName?: string) {
     }
 
     database.prepare("DELETE FROM categories WHERE id = ? OR name = ? COLLATE NOCASE").run(cat.id, cat.name);
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { pushToTurso } = require("./turso");
+      pushToTurso(`DELETE FROM categories WHERE id = ? OR name = ?;`, [cat.id, cat.name]);
+    } catch {}
     return true;
   }).immediate();
 }
@@ -2570,6 +2621,16 @@ export function setSiteSetting(key: string, value: string, category = "general")
       ON CONFLICT(key) DO UPDATE SET value = excluded.value
     `)
     .run(key, value, category);
+
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { pushToTurso } = require("./turso");
+    pushToTurso(
+      `INSERT INTO site_settings (key, value, category) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value;`,
+      [key, value, category]
+    );
+  } catch {}
+
   return true;
 }
 

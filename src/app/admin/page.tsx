@@ -508,6 +508,7 @@ export default function EnterpriseAdminSuite() {
   const [tursoTesting, setTursoTesting] = useState(false);
   const [tursoSaving, setTursoSaving] = useState(false);
   const [tursoSyncing, setTursoSyncing] = useState(false);
+  const [tursoPulling, setTursoPulling] = useState(false);
   const [tursoStatus, setTursoStatus] = useState<any>(null);
 
   const loadTursoStatus = useCallback(async () => {
@@ -516,6 +517,12 @@ export default function EnterpriseAdminSuite() {
       if (res.ok) {
         const data = await res.json();
         setTursoStatus(data);
+        if (data.url) {
+          setTursoUrl((prev) => prev || data.url);
+        }
+        if (data.authToken) {
+          setTursoToken((prev) => prev || data.authToken);
+        }
       }
     } catch {}
   }, []);
@@ -579,6 +586,29 @@ export default function EnterpriseAdminSuite() {
       showToast(err.message, "error");
     } finally {
       setTursoSyncing(false);
+    }
+  };
+
+  const handlePullFromTurso = async () => {
+    if (!confirm("Turso bulutundaki verileri yerel veritabanına indirmek ve güncellemek istediğinize emin misiniz?")) {
+      return;
+    }
+    setTursoPulling(true);
+    try {
+      const res = await fetch("/api/admin/turso", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "pull-from-turso", url: tursoUrl, authToken: tursoToken }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Veri çekme başarısız oldu.");
+      showToast(data.message || "Turso bulut verileri başarıyla indirildi!");
+      void loadTursoStatus();
+      void loadInitialData();
+    } catch (err: any) {
+      showToast(err.message, "error");
+    } finally {
+      setTursoPulling(false);
     }
   };
 
@@ -4757,15 +4787,26 @@ async function compressImageFile(file: File, maxWidth = 1000, maxHeight = 1000, 
                   </button>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={handleSyncToTurso}
-                  disabled={tursoSyncing || !tursoUrl || !tursoToken}
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-[#f36b2b] px-5 py-2 text-xs font-black text-white hover:bg-[#df5b20] shadow-sm transition disabled:opacity-50"
-                >
-                  {tursoSyncing ? <LoaderCircle size={14} className="animate-spin" /> : <Upload size={14} />}
-                  Mevcut Mağazayı Turso Bulutuna Aktar (Sync)
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handlePullFromTurso}
+                    disabled={tursoPulling || !tursoUrl || !tursoToken}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-sky-300 bg-sky-50 px-4 py-2 text-xs font-bold text-sky-800 hover:bg-sky-100 transition disabled:opacity-50"
+                  >
+                    {tursoPulling ? <LoaderCircle size={14} className="animate-spin" /> : <Download size={14} />}
+                    Buluttan Verileri Çek (Geri Yükle)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSyncToTurso}
+                    disabled={tursoSyncing || !tursoUrl || !tursoToken}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-[#f36b2b] px-5 py-2 text-xs font-black text-white hover:bg-[#df5b20] shadow-sm transition disabled:opacity-50"
+                  >
+                    {tursoSyncing ? <LoaderCircle size={14} className="animate-spin" /> : <Upload size={14} />}
+                    Mevcut Mağazayı Turso Bulutuna Aktar (Sync)
+                  </button>
+                </div>
               </div>
             </div>
 

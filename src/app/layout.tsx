@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
 import { getSiteSettings } from "@/lib/db";
+import { ensureTursoSynced } from "@/lib/turso";
 import { MarqueeBar } from "@/components/marquee-bar";
 
 const geistSans = Geist({
@@ -16,6 +17,7 @@ const geistMono = Geist_Mono({
 });
 
 export async function generateMetadata(): Promise<Metadata> {
+  await ensureTursoSynced();
   const settings = getSiteSettings();
   return {
     title: settings.meta_title || settings.site_title || "Markasi Otomotiv | Oto Yedek Parça",
