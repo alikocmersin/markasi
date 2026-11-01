@@ -4,6 +4,9 @@ import { getAdmin, isSameOrigin } from "@/lib/auth";
 import { getDatabase } from "@/lib/db";
 import { syncCloudDatabase } from "@/lib/cloud-sync";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 const maximumFileBytes = 2 * 1024 * 1024;
 const fieldAliases = {
   code: new Set([

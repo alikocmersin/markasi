@@ -115,35 +115,78 @@ export async function getAdmin() {
 }
 
 export function isSameOrigin(request: Request) {
+  // 1. Browser-enforced Sec-Fetch-Site header (modern standard CSRF verification)
+  const secFetchSite = request.headers.get("sec-fetch-site");
+  if (secFetchSite === "same-origin" || secFetchSite === "same-site" || secFetchSite === "none") {
+    return true;
+  }
+
+  // 2. Identify request source origin or referer
   const origin = request.headers.get("origin");
-  if (!origin) {
-    const secFetchSite = request.headers.get("sec-fetch-site");
-    if (secFetchSite && secFetchSite !== "same-origin" && secFetchSite !== "same-site" && secFetchSite !== "none") {
+  const referer = request.headers.get("referer");
+  const source = origin || referer;
+
+  if (!source) {
+    if (secFetchSite && secFetchSite === "cross-site") {
       return false;
     }
     return true;
   }
-  try {
-    const originHost = new URL(origin).host.toLowerCase();
-    const host = (request.headers.get("host") || "").toLowerCase();
-    const forwardedHost = (request.headers.get("x-forwarded-host") || "").toLowerCase();
-    const requestHost = new URL(request.url).host.toLowerCase();
 
-    if (originHost === host || originHost === requestHost) return true;
+  try {
+    const sourceUrl = new URL(source);
+    const cleanHost = (h: string) => {
+      return h.trim().replace(/^https?:\/\//, "").split(":")[0].replace(/^www\./, "").toLowerCase();
+    };
+    const cleanSource = cleanHost(sourceUrl.hostname);
+
+    // Collect all candidate hosts from headers
+    const candidateHosts = new Set<string>();
+
+    const hostHeader = request.headers.get("host");
+    if (hostHeader) candidateHosts.add(cleanHost(hostHeader));
+
+    const forwardedHost = request.headers.get("x-forwarded-host");
     if (forwardedHost) {
-      const firstForwarded = forwardedHost.split(",")[0].trim();
-      if (originHost === forwardedHost || originHost === firstForwarded) {
+      forwardedHost.split(",").forEach((h) => candidateHosts.add(cleanHost(h)));
+    }
+
+    try {
+      const requestHost = new URL(request.url).hostname;
+      if (requestHost) candidateHosts.add(cleanHost(requestHost));
+    } catch {}
+
+    // 1. Direct candidate match (ignoring www and port)
+    if (candidateHosts.has(cleanSource)) return true;
+
+    // 2. Root domain / subdomain match
+    for (const cand of candidateHosts) {
+      if (
+        cand === cleanSource ||
+        cand.endsWith(`.${cleanSource}`) ||
+        cleanSource.endsWith(`.${cand}`)
+      ) {
         return true;
       }
     }
-    // Allow local development and loopback origins
+
+    // 3. Both are Vercel domains (e.g. preview deployment vs production alias)
+    if (cleanSource.endsWith(".vercel.app")) {
+      for (const cand of candidateHosts) {
+        if (cand.endsWith(".vercel.app")) return true;
+      }
+    }
+
+    // 4. Local development and loopback origins
     if (
-      originHost.startsWith("localhost") ||
-      originHost.startsWith("127.0.0.1") ||
-      originHost.startsWith("[::1]")
+      cleanSource === "localhost" ||
+      cleanSource === "127.0.0.1" ||
+      cleanSource === "::1" ||
+      cleanSource.endsWith(".localhost")
     ) {
       return true;
     }
+
     return false;
   } catch {
     return false;

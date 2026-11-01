@@ -5,6 +5,9 @@ import { getAdmin, isSameOrigin } from "@/lib/auth";
 import { getDatabase } from "@/lib/db";
 import { readJsonObject } from "@/lib/request";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 const maximumHtmlBytes = 2 * 1024 * 1024;
 const maximumProducts = 20;
 const maximumRedirects = 3;

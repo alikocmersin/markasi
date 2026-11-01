@@ -82,23 +82,72 @@ function validateScraperUrl(targetUrl: string): URL {
   return urlObj;
 }
 
+async function fetchTargetHtml(urlObj: URL, timeoutMs = 15000): Promise<string> {
+  const browserHeaders: Record<string, string> = {
+    "User-Agent":
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+    "Accept":
+      "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+    "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
+    "Cache-Control": "max-age=0",
+    "Sec-Ch-Ua": '"Chromium";v="128", "Not;A=Brand";v="24", "Google Chrome";v="128"',
+    "Sec-Ch-Ua-Mobile": "?0",
+    "Sec-Ch-Ua-Platform": '"Windows"',
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "none",
+    "Sec-Fetch-User": "?1",
+    "Upgrade-Insecure-Requests": "1",
+  };
+
+  try {
+    const res = await fetch(urlObj.toString(), {
+      headers: browserHeaders,
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+
+    if (res.ok) {
+      return await res.text();
+    }
+
+    // If 403 or 503 (Cloudflare WAF / Bot challenge), try fallback with mobile Safari User-Agent
+    if (res.status === 403 || res.status === 503) {
+      const fallbackHeaders: Record<string, string> = {
+        "User-Agent":
+          "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "tr-TR,tr;q=0.9",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+      };
+
+      const fallbackRes = await fetch(urlObj.toString(), {
+        headers: fallbackHeaders,
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+
+      if (fallbackRes.ok) {
+        return await fallbackRes.text();
+      }
+
+      throw new Error(
+        `Hedef site (${urlObj.hostname}) bot koruması (Cloudflare/WAF) nedeniyle erişimi reddetti (${fallbackRes.status}). Lütfen adresi kontrol edin veya ürünü manuel ekleyin.`
+      );
+    }
+
+    throw new Error(`Hedef siteye bağlanılamadı (${res.status}).`);
+  } catch (err: any) {
+    if (err.name === "TimeoutError" || err.message?.includes("timeout")) {
+      throw new Error(`Hedef siteye (${urlObj.hostname}) bağlanırken zaman aşımı oluştu. Lütfen bağlantıyı kontrol edin.`);
+    }
+    throw err;
+  }
+}
+
 export async function scrapeProductUrl(targetUrl: string): Promise<ScrapedProduct> {
   const urlObj = validateScraperUrl(targetUrl);
-
-  const response = await fetch(urlObj.toString(), {
-    headers: {
-      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-      "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
-    },
-    signal: AbortSignal.timeout(12000),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Hedef siteye bağlanılamadı (${response.status}).`);
-  }
-
-  const html = await response.text();
+  const html = await fetchTargetHtml(urlObj, 15000);
   const $ = cheerio.load(html);
 
   let name = "";
@@ -268,22 +317,7 @@ export type ScrapedCategoryProduct = {
 
 export async function scrapeCategoryUrl(categoryUrl: string): Promise<ScrapedCategoryProduct[]> {
   const urlObj = validateScraperUrl(categoryUrl);
-
-  const response = await fetch(urlObj.toString(), {
-    headers: {
-      "User-Agent":
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-      "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
-    },
-    signal: AbortSignal.timeout(15000),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Hedef siteye bağlanılamadı (${response.status}).`);
-  }
-
-  const html = await response.text();
+  const html = await fetchTargetHtml(urlObj, 20000);
   const $ = cheerio.load(html);
   const products: ScrapedCategoryProduct[] = [];
   const seenUrls = new Set<string>();

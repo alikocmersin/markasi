@@ -4,6 +4,9 @@ import { readJsonObject } from "@/lib/request";
 import { checkSourcePriceAndStock, scrapeCategoryUrl, scrapeProductUrl } from "@/lib/scraper";
 import { recordAuditLog } from "@/lib/db";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export async function POST(request: Request) {
   const admin = await getAdmin();
   if (!admin) {
