@@ -70,6 +70,68 @@ export async function GET(request: Request) {
     }
   }
 
+  // 3. MySQL / phpMyAdmin Compatible SQL Dump Download
+  if (action === "export-mysql") {
+    try {
+      const db = getDatabase();
+      const tables = [
+        "site_settings",
+        "categories",
+        "products",
+        "product_images",
+        "supplier_stock",
+        "admins",
+        "members",
+        "sliders_banners",
+        "cms_pages",
+        "currency_rates",
+        "shipping_rules",
+        "pos_installments",
+        "b2b_groups",
+        "coupons",
+        "orders",
+        "order_items",
+      ];
+
+      let sqlDump = `-- Markasi Otomotiv MySQL Dump\n-- Generated: ${new Date().toISOString()}\n-- Compatible with MySQL 5.7+, 8.0+, MariaDB, TiDB & phpMyAdmin\n\nSET NAMES utf8mb4;\nSET FOREIGN_KEY_CHECKS = 0;\n\n`;
+
+      for (const table of tables) {
+        const rows = db.prepare(`SELECT * FROM "${table}"`).all() as any[];
+        if (rows.length === 0) continue;
+
+        const columns = Object.keys(rows[0]);
+        const colList = columns.map((c) => `\`${c}\``).join(", ");
+
+        sqlDump += `--\n-- Data for table \`${table}\`\n--\n`;
+        for (const row of rows) {
+          const values = columns.map((col) => {
+            const val = row[col];
+            if (val === null || val === undefined) return "NULL";
+            if (typeof val === "number") return val;
+            return `'${String(val).replace(/\\/g, "\\\\").replace(/'/g, "''")}'`;
+          });
+          sqlDump += `INSERT INTO \`${table}\` (${colList}) VALUES (${values.join(", ")});\n`;
+        }
+        sqlDump += "\n";
+      }
+
+      sqlDump += "SET FOREIGN_KEY_CHECKS = 1;\n";
+
+      recordAuditLog(admin.email, "EXPORT_MYSQL", "Security", "MYSQL", "MySQL .sql dökümü indirildi.");
+
+      return new Response(sqlDump, {
+        headers: {
+          "Content-Type": "application/sql; charset=utf-8",
+          "Content-Disposition": `attachment; filename="markasi-mysql-dump-${new Date().toISOString().slice(0, 10)}.sql"`,
+          "Cache-Control": "no-store",
+        },
+      });
+    } catch (err: unknown) {
+      console.error("[MySQL Export Error]", err);
+      return NextResponse.json({ error: "MySQL .sql dökümü oluşturulamadı." }, { status: 500 });
+    }
+  }
+
   const auditLogs = listAuditLogs(150);
   const admins = listAdmins();
 

@@ -2631,6 +2631,15 @@ export function setSiteSetting(key: string, value: string, category = "general")
     );
   } catch {}
 
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { pushToMysql } = require("./mysql");
+    pushToMysql(
+      "INSERT INTO `site_settings` (`key`, `value`, `category`) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE `value`=VALUES(`value`), `category`=VALUES(`category`)",
+      [key, value, category]
+    );
+  } catch {}
+
   return true;
 }
 

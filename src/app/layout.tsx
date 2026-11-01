@@ -4,6 +4,7 @@ import Script from "next/script";
 import "./globals.css";
 import { getSiteSettings } from "@/lib/db";
 import { ensureTursoSynced } from "@/lib/turso";
+import { ensureMysqlSynced } from "@/lib/mysql";
 import { MarqueeBar } from "@/components/marquee-bar";
 
 const geistSans = Geist({
@@ -18,6 +19,7 @@ const geistMono = Geist_Mono({
 
 export async function generateMetadata(): Promise<Metadata> {
   await ensureTursoSynced();
+  await ensureMysqlSynced();
   const settings = getSiteSettings();
   return {
     title: settings.meta_title || settings.site_title || "Markasi Otomotiv | Oto Yedek Parça",

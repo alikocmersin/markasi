@@ -612,6 +612,151 @@ export default function EnterpriseAdminSuite() {
     }
   };
 
+  // MySQL Cloud / cPanel States
+  const [mysqlHost, setMysqlHost] = useState("");
+  const [mysqlPort, setMysqlPort] = useState("3306");
+  const [mysqlUser, setMysqlUser] = useState("");
+  const [mysqlPassword, setMysqlPassword] = useState("");
+  const [mysqlDatabase, setMysqlDatabase] = useState("");
+  const [mysqlSsl, setMysqlSsl] = useState(false);
+  const [mysqlTesting, setMysqlTesting] = useState(false);
+  const [mysqlSaving, setMysqlSaving] = useState(false);
+  const [mysqlSyncing, setMysqlSyncing] = useState(false);
+  const [mysqlPulling, setMysqlPulling] = useState(false);
+  const [mysqlStatus, setMysqlStatus] = useState<any>(null);
+
+  const loadMysqlStatus = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/mysql");
+      if (res.ok) {
+        const data = await res.json();
+        setMysqlStatus(data);
+        if (data.host) setMysqlHost((prev) => prev || data.host);
+        if (data.port) setMysqlPort(String(data.port));
+        if (data.user) setMysqlUser((prev) => prev || data.user);
+        if (data.database) setMysqlDatabase((prev) => prev || data.database);
+        if (data.ssl !== undefined) setMysqlSsl(Boolean(data.ssl));
+      }
+    } catch {}
+  }, []);
+
+  const handleTestMysql = async () => {
+    setMysqlTesting(true);
+    try {
+      const res = await fetch("/api/admin/mysql", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "test",
+          host: mysqlHost,
+          port: mysqlPort,
+          user: mysqlUser,
+          password: mysqlPassword,
+          database: mysqlDatabase,
+          ssl: mysqlSsl,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || data.error || "MySQL bağlantısı kurulamadı.");
+      }
+      showToast(data.message || "Tebrikler! MySQL veritabanı bağlantısı başarılı.");
+      void loadMysqlStatus();
+    } catch (err: any) {
+      showToast(err.message, "error");
+    } finally {
+      setMysqlTesting(false);
+    }
+  };
+
+  const handleSaveMysql = async () => {
+    setMysqlSaving(true);
+    try {
+      const res = await fetch("/api/admin/mysql", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "save",
+          host: mysqlHost,
+          port: mysqlPort,
+          user: mysqlUser,
+          password: mysqlPassword,
+          database: mysqlDatabase,
+          ssl: mysqlSsl,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Kaydedilemedi.");
+      showToast("MySQL ayarları başarıyla kaydedildi!");
+      void loadMysqlStatus();
+    } catch (err: any) {
+      showToast(err.message, "error");
+    } finally {
+      setMysqlSaving(false);
+    }
+  };
+
+  const handleSyncToMysql = async () => {
+    if (!confirm("Mevcut tüm ürün, kategori ve ayarları MySQL veritabanına aktarmak istediğinize emin misiniz?")) {
+      return;
+    }
+    setMysqlSyncing(true);
+    try {
+      const res = await fetch("/api/admin/mysql", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "sync-to-mysql",
+          host: mysqlHost,
+          port: mysqlPort,
+          user: mysqlUser,
+          password: mysqlPassword,
+          database: mysqlDatabase,
+          ssl: mysqlSsl,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Aktarım başarısız oldu.");
+      showToast(data.message || "Tüm mağaza MySQL veritabanına aktarıldı!");
+      void loadMysqlStatus();
+    } catch (err: any) {
+      showToast(err.message, "error");
+    } finally {
+      setMysqlSyncing(false);
+    }
+  };
+
+  const handlePullFromMysql = async () => {
+    if (!confirm("MySQL'deki verileri yerel sisteme indirmek istediğinize emin misiniz?")) {
+      return;
+    }
+    setMysqlPulling(true);
+    try {
+      const res = await fetch("/api/admin/mysql", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "pull-from-mysql",
+          host: mysqlHost,
+          port: mysqlPort,
+          user: mysqlUser,
+          password: mysqlPassword,
+          database: mysqlDatabase,
+          ssl: mysqlSsl,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Veri çekme başarısız oldu.");
+      showToast(data.message || "MySQL verileri başarıyla indirildi!");
+      void loadMysqlStatus();
+      void loadInitialData();
+    } catch (err: any) {
+      showToast(err.message, "error");
+    } finally {
+      setMysqlPulling(false);
+    }
+  };
+
   const handleRestoreDb = async (file: File) => {
     if (!file) return;
     if (!confirm(`"${file.name}" veritabanı dosyasını yüklemek istediğinize emin misiniz? Mevcut veritabanının üzerine yazılacaktır.`)) {
@@ -1498,7 +1643,9 @@ async function compressImageFile(file: File, maxWidth = 1000, maxHeight = 1000, 
       setAuditLogs(data.auditLogs || []);
       setAdminUsers(data.admins || []);
     }
-  }, []);
+    void loadTursoStatus();
+    void loadMysqlStatus();
+  }, [loadTursoStatus, loadMysqlStatus]);
 
   // Fetch when tab changes
   useEffect(() => {
@@ -4618,7 +4765,7 @@ async function compressImageFile(file: File, maxWidth = 1000, maxHeight = 1000, 
               </div>
 
               {/* Butonlar Grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
                 {/* 1. Canlı SQLite İndir */}
                 <a
                   href="/api/admin/security?action=backup"
@@ -4692,6 +4839,20 @@ async function compressImageFile(file: File, maxWidth = 1000, maxHeight = 1000, 
                     }}
                   />
                 </label>
+
+                {/* 5. MySQL .sql Dökümü İndir */}
+                <a
+                  href="/api/admin/security?action=export-mysql"
+                  className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-5 text-center transition hover:bg-amber-50 hover:border-amber-300 group"
+                >
+                  <span className="grid size-11 place-items-center rounded-xl bg-amber-100 text-amber-700 group-hover:scale-110 transition">
+                    <Database size={20} />
+                  </span>
+                  <div>
+                    <span className="block text-xs font-black text-slate-900">MySQL .sql İndir</span>
+                    <span className="text-[10px] text-slate-500">phpMyAdmin uyumlu döküm (.sql)</span>
+                  </div>
+                </a>
               </div>
             </div>
 
@@ -4805,6 +4966,173 @@ async function compressImageFile(file: File, maxWidth = 1000, maxHeight = 1000, 
                   >
                     {tursoSyncing ? <LoaderCircle size={14} className="animate-spin" /> : <Upload size={14} />}
                     Mevcut Mağazayı Turso Bulutuna Aktar (Sync)
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* KART: MYSQL & TIDB BULUT VERİTABANI ENTEGRASYONU */}
+            <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="border-b pb-4 mb-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <span className="grid size-10 place-items-center rounded-2xl bg-amber-50 text-amber-600">
+                    <Database size={20} />
+                  </span>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-sm font-black text-slate-900">
+                        MySQL / TiDB Cloud & cPanel Veritabanı Entegrasyonu
+                      </h3>
+                      {mysqlStatus?.configured ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-[10px] font-bold text-emerald-700">
+                          <CheckCircle2 size={12} /> MySQL Aktif
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] font-bold text-slate-600">
+                          Yapılandırılmadı
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-slate-500">
+                      TiDB Serverless ile 25 GB ücretsiz kalıcı MySQL bulut veritabanı veya mevcut cPanel hosting MySQL sunucunuzu bağlayabilirsiniz.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Kurulum Rehberi */}
+              <div className="rounded-2xl border border-amber-100 bg-amber-50/70 p-4 text-xs text-amber-950 mb-5">
+                <p className="font-bold mb-1.5 flex items-center gap-1.5 text-amber-800">
+                  <Sparkles size={14} className="text-amber-600" />
+                  3 Tıkta 25 GB Ücretsiz TiDB MySQL Hesabı Nasıl Açılır?
+                </p>
+                <ol className="list-decimal list-inside space-y-1 text-slate-700">
+                  <li><a href="https://tidbcloud.com" target="_blank" rel="noreferrer" className="text-amber-700 font-bold underline">tidbcloud.com</a> adresine gidin ve Google hesabınızla ücretsiz giriş yapın (Kredi kartı gerekmez).</li>
+                  <li><strong>"Create Cluster"</strong> butonuna basın, <strong>TiDB Serverless (Free 25 GB)</strong> seçeneğini seçin. Lokasyon olarak <strong>Frankfurt (AWS eu-central-1)</strong> seçebilirsiniz.</li>
+                  <li>Oluşan sayfada <strong>"Connect"</strong> butonuna basıp <strong>Host, Port (4000), User, Password</strong> bilgilerini aşağıdaki kutucuklara yapıştırın.</li>
+                </ol>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
+                <div className="sm:col-span-2">
+                  <label className="font-bold text-slate-700 block mb-1">
+                    MySQL Host:
+                  </label>
+                  <input
+                    type="text"
+                    value={mysqlHost}
+                    onChange={(e) => setMysqlHost(e.target.value)}
+                    placeholder="Örn: gateway01.eu-central-1.prod.aws.tidbcloud.com veya sql.sunucu.com"
+                    className="w-full rounded-xl border border-slate-200 p-2.5 font-mono text-xs outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
+                  />
+                </div>
+
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">
+                    Port:
+                  </label>
+                  <input
+                    type="text"
+                    value={mysqlPort}
+                    onChange={(e) => setMysqlPort(e.target.value)}
+                    placeholder="3306 (veya TiDB için 4000)"
+                    className="w-full rounded-xl border border-slate-200 p-2.5 font-mono text-xs outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
+                  />
+                </div>
+
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">
+                    Veritabanı Adı (Database):
+                  </label>
+                  <input
+                    type="text"
+                    value={mysqlDatabase}
+                    onChange={(e) => setMysqlDatabase(e.target.value)}
+                    placeholder="Örn: markasi veya test"
+                    className="w-full rounded-xl border border-slate-200 p-2.5 font-mono text-xs outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
+                  />
+                </div>
+
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">
+                    Kullanıcı Adı (User):
+                  </label>
+                  <input
+                    type="text"
+                    value={mysqlUser}
+                    onChange={(e) => setMysqlUser(e.target.value)}
+                    placeholder="Örn: 2abc123.root veya root"
+                    className="w-full rounded-xl border border-slate-200 p-2.5 font-mono text-xs outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
+                  />
+                </div>
+
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">
+                    Şifre (Password):
+                  </label>
+                  <input
+                    type="password"
+                    value={mysqlPassword}
+                    onChange={(e) => setMysqlPassword(e.target.value)}
+                    placeholder="MySQL şifresi..."
+                    className="w-full rounded-xl border border-slate-200 p-2.5 font-mono text-xs outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
+                  />
+                </div>
+              </div>
+
+              <div className="mt-4 flex items-center gap-2 text-xs text-slate-700">
+                <input
+                  type="checkbox"
+                  id="mysqlSsl"
+                  checked={mysqlSsl}
+                  onChange={(e) => setMysqlSsl(e.target.checked)}
+                  className="rounded border-slate-300 text-amber-600 focus:ring-amber-500"
+                />
+                <label htmlFor="mysqlSsl" className="cursor-pointer font-bold">
+                  SSL Güvenli Bağlantı Kullan (TiDB Cloud ve bulut sunucular için önerilen: Açık)
+                </label>
+              </div>
+
+              <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t pt-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleTestMysql}
+                    disabled={mysqlTesting || !mysqlHost || !mysqlUser || !mysqlDatabase}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 transition disabled:opacity-50"
+                  >
+                    {mysqlTesting ? <LoaderCircle size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                    MySQL Bağlantısını Test Et
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveMysql}
+                    disabled={mysqlSaving || !mysqlHost || !mysqlUser || !mysqlDatabase}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 px-4 py-2 text-xs font-bold text-white hover:bg-slate-800 transition disabled:opacity-50"
+                  >
+                    {mysqlSaving ? <LoaderCircle size={14} className="animate-spin" /> : <Save size={14} />}
+                    Ayarları Kaydet
+                  </button>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handlePullFromMysql}
+                    disabled={mysqlPulling || !mysqlHost || !mysqlUser || !mysqlDatabase}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-amber-300 bg-amber-50 px-4 py-2 text-xs font-bold text-amber-900 hover:bg-amber-100 transition disabled:opacity-50"
+                  >
+                    {mysqlPulling ? <LoaderCircle size={14} className="animate-spin" /> : <Download size={14} />}
+                    MySQL'den Verileri Çek
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSyncToMysql}
+                    disabled={mysqlSyncing || !mysqlHost || !mysqlUser || !mysqlDatabase}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-5 py-2 text-xs font-black text-white hover:bg-emerald-700 shadow-sm transition disabled:opacity-50"
+                  >
+                    {mysqlSyncing ? <LoaderCircle size={14} className="animate-spin" /> : <Upload size={14} />}
+                    Tüm Mağazayı MySQL'e Aktar (Sync)
                   </button>
                 </div>
               </div>
