@@ -136,7 +136,7 @@ export async function initMysqlSchema(conn: mysql.Connection) {
 
     `CREATE TABLE IF NOT EXISTS categories (
       \`id\` VARCHAR(191) PRIMARY KEY,
-      \`name\` VARCHAR(191) NOT NULL UNIQUE,
+      \`name\` VARCHAR(191) NOT NULL,
       \`slug\` VARCHAR(191) DEFAULT '',
       \`parent_id\` VARCHAR(191) DEFAULT NULL,
       \`sort_order\` INT DEFAULT 0,
@@ -147,7 +147,10 @@ export async function initMysqlSchema(conn: mysql.Connection) {
       \`default_margin\` DECIMAL(5,2) DEFAULT 20.00,
       \`is_vehicle_tree\` TINYINT DEFAULT 0,
       \`active\` TINYINT DEFAULT 1,
-      \`created_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      \`created_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      INDEX \`idx_categories_parent\` (\`parent_id\`),
+      INDEX \`idx_categories_vehicle\` (\`is_vehicle_tree\`),
+      INDEX \`idx_categories_name\` (\`name\`)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`,
 
     `CREATE TABLE IF NOT EXISTS products (

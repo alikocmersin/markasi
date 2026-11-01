@@ -636,7 +636,17 @@ function openDatabase() {
       hidden_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
     CREATE TABLE IF NOT EXISTS categories (
-      name TEXT PRIMARY KEY COLLATE NOCASE,
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      slug TEXT DEFAULT '',
+      parent_id TEXT DEFAULT NULL,
+      sort_order INTEGER DEFAULT 0,
+      icon TEXT DEFAULT '',
+      banner TEXT DEFAULT '',
+      seo_title TEXT DEFAULT '',
+      seo_description TEXT DEFAULT '',
+      default_margin REAL DEFAULT 20.0,
+      is_vehicle_tree INTEGER DEFAULT 0,
       active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
@@ -658,6 +668,59 @@ function openDatabase() {
   // ==========================================
 
   // 1. Categories Schema Migration
+  const catPkInfo = (database.pragma("table_info(categories)") as any[]).find((c) => c.pk === 1);
+  if (catPkInfo && catPkInfo.name === "name") {
+    database.transaction(() => {
+      database.exec(`
+        CREATE TABLE categories_migrated (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          slug TEXT DEFAULT '',
+          parent_id TEXT DEFAULT NULL,
+          sort_order INTEGER DEFAULT 0,
+          icon TEXT DEFAULT '',
+          banner TEXT DEFAULT '',
+          seo_title TEXT DEFAULT '',
+          seo_description TEXT DEFAULT '',
+          default_margin REAL DEFAULT 20.0,
+          is_vehicle_tree INTEGER DEFAULT 0,
+          active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      const existingRows = database.prepare("SELECT * FROM categories").all() as any[];
+      const insStmt = database.prepare(`
+        INSERT OR REPLACE INTO categories_migrated (
+          id, name, slug, parent_id, sort_order, icon, banner, seo_title, seo_description, default_margin, is_vehicle_tree, active, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      for (const r of existingRows) {
+        const id = r.id || r.slug || r.name.toLowerCase().replace(/[^a-z0-9]/g, "-") || randomUUID();
+        insStmt.run(
+          id,
+          r.name,
+          r.slug || id,
+          r.parent_id || null,
+          r.sort_order || 0,
+          r.icon || "",
+          r.banner || "",
+          r.seo_title || "",
+          r.seo_description || "",
+          r.default_margin ?? 20.0,
+          r.is_vehicle_tree || 0,
+          r.active ?? 1,
+          r.created_at || new Date().toISOString()
+        );
+      }
+      database.exec(`
+        DROP TABLE categories;
+        ALTER TABLE categories_migrated RENAME TO categories;
+        CREATE INDEX IF NOT EXISTS idx_categories_parent_id ON categories(parent_id);
+        CREATE INDEX IF NOT EXISTS idx_categories_is_vehicle_tree ON categories(is_vehicle_tree);
+        CREATE INDEX IF NOT EXISTS idx_categories_name ON categories(name);
+      `);
+    })();
+  }
   addColumnIfNotExists(database, "categories", "id", "TEXT");
   addColumnIfNotExists(database, "categories", "slug", "TEXT");
   addColumnIfNotExists(database, "categories", "parent_id", "TEXT");
@@ -1189,9 +1252,9 @@ function openDatabase() {
 
   // Seed Vehicle Tree from complete catalog if empty or incomplete
   const vtCount = database.prepare("SELECT count(*) as c FROM categories WHERE is_vehicle_tree = 1").get() as { c: number };
-  if (vtCount.c < 500) {
+  if (vtCount.c < 1200) {
     const insert = database.prepare(`
-      INSERT OR IGNORE INTO categories (id, name, slug, parent_id, sort_order, default_margin, is_vehicle_tree, active)
+      INSERT OR REPLACE INTO categories (id, name, slug, parent_id, sort_order, default_margin, is_vehicle_tree, active)
       VALUES (?, ?, ?, ?, ?, 20.0, 1, 1)
     `);
     let sortOrder = 0;
@@ -1364,9 +1427,21 @@ export function upsertCategory(data: {
   const id = data.id || (data.slug ? slugify(data.slug) : slugify(data.name)) || randomUUID();
   const slug = data.slug ? slugify(data.slug) : slugify(data.name) || id;
 
-  const existing = database
-    .prepare("SELECT id, name FROM categories WHERE id = ? OR slug = ? OR name = ? COLLATE NOCASE OR normalize_product_search(name) = normalize_product_search(?)")
-    .get(id, slug, data.name, data.name) as { id: string; name: string } | undefined;
+  let existing: { id: string; name: string } | undefined;
+  if (data.id) {
+    existing = database.prepare("SELECT id, name FROM categories WHERE id = ?").get(data.id) as { id: string; name: string } | undefined;
+  }
+  if (!existing) {
+    if (data.parentId) {
+      existing = database
+        .prepare("SELECT id, name FROM categories WHERE parent_id = ? AND (name = ? COLLATE NOCASE OR slug = ?)")
+        .get(data.parentId, data.name, slug) as { id: string; name: string } | undefined;
+    } else {
+      existing = database
+        .prepare("SELECT id, name FROM categories WHERE parent_id IS NULL AND is_vehicle_tree = ? AND (name = ? COLLATE NOCASE OR slug = ?)")
+        .get(data.isVehicleTree ? 1 : 0, data.name, slug) as { id: string; name: string } | undefined;
+    }
+  }
 
   if (existing) {
     database
@@ -1383,11 +1458,10 @@ export function upsertCategory(data: {
           default_margin = @defaultMargin,
           is_vehicle_tree = @isVehicleTree,
           active = @active
-        WHERE id = @id OR name = @existingName COLLATE NOCASE
+        WHERE id = @id
       `)
       .run({
-        id: existing.id || id,
-        existingName: existing.name,
+        id: existing.id,
         name: data.name,
         slug,
         parentId: data.parentId || null,
@@ -1401,36 +1475,14 @@ export function upsertCategory(data: {
         active: data.active !== false ? 1 : 0,
       });
 
-    // Update products if name changed or was normalized
-    if (existing.name !== data.name) {
+    // Update products only if it's a part category and name changed
+    if (!data.isVehicleTree && existing.name !== data.name) {
       database
-        .prepare("UPDATE products SET category = ? WHERE category = ? COLLATE NOCASE OR normalize_product_search(category) = normalize_product_search(?)")
-        .run(data.name, existing.name, existing.name);
+        .prepare("UPDATE products SET category = ? WHERE category = ? COLLATE NOCASE")
+        .run(data.name, existing.name);
     }
 
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { pushToTurso } = require("./turso");
-      pushToTurso(
-        `INSERT INTO categories (id, name, slug, parent_id, sort_order, icon, banner, seo_title, seo_description, default_margin, is_vehicle_tree, active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(name) DO UPDATE SET id=excluded.id, slug=excluded.slug, parent_id=excluded.parent_id, sort_order=excluded.sort_order, icon=excluded.icon, banner=excluded.banner, seo_title=excluded.seo_title, seo_description=excluded.seo_description, default_margin=excluded.default_margin, is_vehicle_tree=excluded.is_vehicle_tree, active=excluded.active;`,
-        [
-          existing.id || id,
-          data.name,
-          slug,
-          data.parentId || null,
-          data.sortOrder ?? 0,
-          data.icon ?? "",
-          data.banner ?? "",
-          data.seoTitle ?? "",
-          data.seoDescription ?? "",
-          data.defaultMargin ?? 20.0,
-          data.isVehicleTree ? 1 : 0,
-          data.active !== false ? 1 : 0,
-        ]
-      );
-    } catch {}
-
-    return { id: existing.id || id, created: false };
+    return { id: existing.id, created: false };
   } else {
     database
       .prepare(`
@@ -1452,28 +1504,6 @@ export function upsertCategory(data: {
         active: data.active !== false ? 1 : 0,
       });
 
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { pushToTurso } = require("./turso");
-      pushToTurso(
-        `INSERT INTO categories (id, name, slug, parent_id, sort_order, icon, banner, seo_title, seo_description, default_margin, is_vehicle_tree, active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(name) DO UPDATE SET id=excluded.id, slug=excluded.slug, parent_id=excluded.parent_id, sort_order=excluded.sort_order, icon=excluded.icon, banner=excluded.banner, seo_title=excluded.seo_title, seo_description=excluded.seo_description, default_margin=excluded.default_margin, is_vehicle_tree=excluded.is_vehicle_tree, active=excluded.active;`,
-        [
-          id,
-          data.name,
-          slug,
-          data.parentId || null,
-          data.sortOrder ?? 0,
-          data.icon ?? "",
-          data.banner ?? "",
-          data.seoTitle ?? "",
-          data.seoDescription ?? "",
-          data.defaultMargin ?? 20.0,
-          data.isVehicleTree ? 1 : 0,
-          data.active !== false ? 1 : 0,
-        ]
-      );
-    } catch {}
-
     return { id, created: true };
   }
 }
@@ -1481,25 +1511,27 @@ export function upsertCategory(data: {
 export function deleteCategory(idOrName: string, reassignToIdOrName?: string) {
   const database = getDatabase();
   return database.transaction(() => {
-    const cat = database.prepare("SELECT id, name FROM categories WHERE id = ? OR name = ? COLLATE NOCASE").get(idOrName, idOrName) as { id: string; name: string } | undefined;
+    const cat = (database.prepare("SELECT id, name, is_vehicle_tree FROM categories WHERE id = ?").get(idOrName) as { id: string; name: string; is_vehicle_tree: number } | undefined)
+      || (database.prepare("SELECT id, name, is_vehicle_tree FROM categories WHERE name = ? COLLATE NOCASE").get(idOrName) as { id: string; name: string; is_vehicle_tree: number } | undefined);
     if (!cat) return false;
 
     if (reassignToIdOrName) {
-      const target = database.prepare("SELECT id, name FROM categories WHERE id = ? OR name = ? COLLATE NOCASE").get(reassignToIdOrName, reassignToIdOrName) as { id: string; name: string } | undefined;
+      const target = (database.prepare("SELECT id, name FROM categories WHERE id = ?").get(reassignToIdOrName) as { id: string; name: string } | undefined)
+        || (database.prepare("SELECT id, name FROM categories WHERE name = ? COLLATE NOCASE").get(reassignToIdOrName) as { id: string; name: string } | undefined);
       if (target) {
         database.prepare("UPDATE products SET category = ? WHERE category = ? COLLATE NOCASE").run(target.name, cat.name);
         database.prepare("UPDATE categories SET parent_id = ? WHERE parent_id = ?").run(target.id, cat.id);
       }
     } else {
-      database.prepare("UPDATE categories SET parent_id = NULL WHERE parent_id = ?").run(cat.id);
+      if (cat.is_vehicle_tree === 1) {
+        // Cascade delete children for vehicle tree to avoid orphaned models becoming root brands
+        database.prepare("DELETE FROM categories WHERE parent_id = ?").run(cat.id);
+      } else {
+        database.prepare("UPDATE categories SET parent_id = NULL WHERE parent_id = ?").run(cat.id);
+      }
     }
 
-    database.prepare("DELETE FROM categories WHERE id = ? OR name = ? COLLATE NOCASE").run(cat.id, cat.name);
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { pushToTurso } = require("./turso");
-      pushToTurso(`DELETE FROM categories WHERE id = ? OR name = ?;`, [cat.id, cat.name]);
-    } catch {}
+    database.prepare("DELETE FROM categories WHERE id = ?").run(cat.id);
     return true;
   }).immediate();
 }

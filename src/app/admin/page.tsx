@@ -92,6 +92,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { BrandLogo, BrandMark } from "@/components/brand-logo";
 import { vehicleCatalog } from "@/data/vehicle-catalog";
+import completeVehicleModels from "@/data/complete-vehicle-models.json";
 
 // =========================================================================
 // TYPES
@@ -126,6 +127,65 @@ type CategoryItem = {
   productCount?: number;
   children?: CategoryItem[];
 };
+
+function filterCategoryTree(nodes: CategoryItem[], query: string): CategoryItem[] {
+  if (!query.trim()) return nodes;
+  const q = query.trim().toLowerCase();
+
+  const result: CategoryItem[] = [];
+  for (const node of nodes) {
+    const match =
+      node.name.toLowerCase().includes(q) ||
+      (node.slug && node.slug.toLowerCase().includes(q));
+    const filteredChildren = node.children
+      ? filterCategoryTree(node.children, query)
+      : [];
+    if (match || filteredChildren.length > 0) {
+      result.push({
+        ...node,
+        children: filteredChildren,
+      });
+    }
+  }
+  return result;
+}
+
+function flattenCategoryOptions(
+  nodes: CategoryItem[],
+  depth = 0,
+  excludeId?: string,
+  isExcludedAncestor = false
+): Array<{ id: string; name: string; depth: number; disabled: boolean }> {
+  const result: Array<{ id: string; name: string; depth: number; disabled: boolean }> = [];
+  for (const node of nodes) {
+    const isExcluded = isExcludedAncestor || (excludeId ? node.id === excludeId : false);
+    result.push({
+      id: node.id,
+      name: node.name,
+      depth,
+      disabled: isExcluded,
+    });
+    if (node.children && node.children.length > 0) {
+      result.push(...flattenCategoryOptions(node.children, depth + 1, excludeId, isExcluded));
+    }
+  }
+  return result;
+}
+
+function countCategoryNodes(nodes: CategoryItem[]): { total: number; root: number; sub: number } {
+  let root = nodes.length;
+  let total = 0;
+  const walk = (items: CategoryItem[]) => {
+    for (const it of items) {
+      total += 1;
+      if (it.children && it.children.length > 0) {
+        walk(it.children);
+      }
+    }
+  };
+  walk(nodes);
+  return { total, root, sub: total - root };
+}
 
 type VehicleFitment = {
   brand: string;
@@ -366,6 +426,7 @@ export default function EnterpriseAdminSuite() {
   const [categorySearch, setCategorySearch] = useState("");
   const [isVehicleTreeMode, setIsVehicleTreeMode] = useState(false);
   const [savingCategory, setSavingCategory] = useState(false);
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
 
   // 2. Universal Scraper State
   const [scrapeUrl, setScrapeUrl] = useState("");
@@ -829,14 +890,44 @@ export default function EnterpriseAdminSuite() {
     return list;
   }, [categoriesTree]);
 
-    // Vehicle Fitment Cascading Data
+    // Vehicle Fitment Cascading Data (all 56 brands and 1,220 models)
+  const allVehicleBrands = useMemo(() => {
+    const brandMap = new Map<string, string>();
+    for (const b of vehicleCatalog) {
+      brandMap.set(b.label, b.label);
+    }
+    for (const b of Object.values(completeVehicleModels)) {
+      brandMap.set(b.label, b.label);
+    }
+    return Array.from(brandMap.values()).sort((a, b) => a.localeCompare(b, "tr"));
+  }, []);
+
   const currentBrandObj = useMemo(() => {
-    return vehicleCatalog.find((b) => b.label === fitmentBrand);
+    return vehicleCatalog.find((b) => b.label.toLowerCase() === fitmentBrand.toLowerCase());
   }, [fitmentBrand]);
 
   const currentModels = useMemo(() => {
-    return currentBrandObj ? currentBrandObj.models : [];
-  }, [currentBrandObj]);
+    if (currentBrandObj && currentBrandObj.models.length > 0) {
+      const brandData = Object.values(completeVehicleModels).find(
+        (b) => b.label.toLowerCase() === fitmentBrand.toLowerCase()
+      );
+      if (brandData && brandData.models) {
+        const existingLabels = new Set(currentBrandObj.models.map((m) => m.label.toLowerCase()));
+        const extra = brandData.models
+          .filter((m) => !existingLabels.has(m.label.toLowerCase()))
+          .map((m) => ({ label: m.label, generations: [] }));
+        return [...currentBrandObj.models, ...extra].sort((a, b) => a.label.localeCompare(b.label, "tr"));
+      }
+      return currentBrandObj.models;
+    }
+    const brandData = Object.values(completeVehicleModels).find(
+      (b) => b.label.toLowerCase() === fitmentBrand.toLowerCase()
+    );
+    if (brandData && brandData.models) {
+      return brandData.models.map((m) => ({ label: m.label, generations: [] }));
+    }
+    return [];
+  }, [currentBrandObj, fitmentBrand]);
 
   const currentModelObj = useMemo(() => {
     return currentModels.find((m) => m.label === fitmentModel);
@@ -1479,35 +1570,17 @@ async function compressImageFile(file: File, maxWidth = 1000, maxHeight = 1000, 
 
   // Tab specific data loaders
   const loadCategories = useCallback(async () => {
-    let localSaved: Record<string, string> = {};
     try {
-      const stored = localStorage.getItem("markasi_category_images");
-      if (stored) localSaved = JSON.parse(stored) || {};
-    } catch {}
-
-    const res = await fetch("/api/admin/categories");
-    if (res.ok) {
-      const data = await res.json();
-      let cats: CategoryItem[] = data.categories || [];
-      if (Object.keys(localSaved).length > 0) {
-        cats = cats.map((cat) => {
-          const customImg = localSaved[cat.name] || localSaved[cat.slug];
-          if (customImg) {
-            return {
-              ...cat,
-              icon: customImg,
-              banner: customImg,
-            };
-          }
-          return cat;
-        });
+      const res = await fetch("/api/admin/categories", { cache: "no-store" });
+      if (res.ok) {
+        const data = await res.json();
+        const cats: CategoryItem[] = data.categories || [];
+        setCategoriesTree(cats);
       }
-      setCategoriesTree(cats);
-      if (!selectedCategory && cats.length > 0) {
-        setSelectedCategory(cats[0]);
-      }
+    } catch (err) {
+      console.warn("Kategoriler yüklenirken hata:", err);
     }
-  }, [selectedCategory]);
+  }, []);
 
   const loadProducts = useCallback(async () => {
     const params = new URLSearchParams();
@@ -2457,468 +2530,603 @@ async function compressImageFile(file: File, maxWidth = 1000, maxHeight = 1000, 
         {/* ============================================================== */}
         {/* 2. SPLIT-VIEW KATEGORİ & ARAÇ AĞACI YÖNETİMİ */}
         {/* ============================================================== */}
-        {activeTab === "categories" && (
-          <div className="space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white p-4 border border-slate-200 shadow-sm">
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => setIsVehicleTreeMode(false)}
-                  className={`rounded-xl px-4 py-2 text-xs font-bold transition ${
-                    !isVehicleTreeMode ? "bg-[#102b42] text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+        {activeTab === "categories" && (() => {
+          const currentModeRoots = categoriesTree.filter((c) =>
+            isVehicleTreeMode ? c.isVehicleTree : !c.isVehicleTree
+          );
+          const filteredTree = filterCategoryTree(currentModeRoots, categorySearch);
+          const catStats = countCategoryNodes(currentModeRoots);
+          const parentOptions = flattenCategoryOptions(currentModeRoots, 0, selectedCategory?.id);
+
+          const toggleExpand = (id: string, e?: React.MouseEvent) => {
+            if (e) e.stopPropagation();
+            setExpandedCategories((prev) => {
+              const next = new Set(prev);
+              if (next.has(id)) next.delete(id);
+              else next.add(id);
+              return next;
+            });
+          };
+
+          const expandAll = () => {
+            const allIds = new Set<string>();
+            const walk = (items: CategoryItem[]) => {
+              for (const it of items) {
+                if (it.children && it.children.length > 0) {
+                  allIds.add(it.id);
+                  walk(it.children);
+                }
+              }
+            };
+            walk(currentModeRoots);
+            setExpandedCategories(allIds);
+          };
+
+          const collapseAll = () => {
+            setExpandedCategories(new Set());
+          };
+
+          const handleModeSwitch = (vehicleTree: boolean) => {
+            setIsVehicleTreeMode(vehicleTree);
+            setSelectedCategory(null);
+            setCategorySearch("");
+            setExpandedCategories(new Set());
+          };
+
+          const handleNewRootCategory = () => {
+            setSelectedCategory({
+              id: "",
+              name: "",
+              slug: "",
+              parentId: null,
+              sortOrder: currentModeRoots.length + 1,
+              icon: "",
+              banner: "",
+              seoTitle: "",
+              seoDescription: "",
+              defaultMargin: 20.0,
+              isVehicleTree: isVehicleTreeMode,
+              active: true,
+            });
+          };
+
+          const handleAddChildCategory = (parent: CategoryItem, e?: React.MouseEvent) => {
+            if (e) e.stopPropagation();
+            setSelectedCategory({
+              id: "",
+              name: "",
+              slug: "",
+              parentId: parent.id,
+              sortOrder: (parent.children?.length ?? 0) + 1,
+              icon: "",
+              banner: "",
+              seoTitle: "",
+              seoDescription: "",
+              defaultMargin: parent.defaultMargin || 20.0,
+              isVehicleTree: parent.isVehicleTree,
+              active: true,
+            });
+            setExpandedCategories((prev) => new Set(prev).add(parent.id));
+          };
+
+          const renderCategoryNode = (item: CategoryItem, depth = 0): React.ReactNode => {
+            const hasChildren = Boolean(item.children && item.children.length > 0);
+            const isExpanded = categorySearch.trim().length > 0 || expandedCategories.has(item.id);
+            const isSelected = selectedCategory?.id === item.id;
+
+            return (
+              <div key={item.id} className="space-y-1">
+                <div
+                  onClick={() => setSelectedCategory(item)}
+                  className={`group flex items-center justify-between rounded-xl px-2.5 py-2 text-xs font-bold cursor-pointer transition select-none ${
+                    isSelected
+                      ? "bg-orange-50 text-[#f36b2b] border border-orange-200 shadow-xs"
+                      : "hover:bg-slate-50 text-slate-700"
                   }`}
+                  style={{ paddingLeft: `${Math.max(10, depth * 16 + 10)}px` }}
                 >
-                  Parça Kategorileri (Fren, Motor vb.)
-                </button>
-                <button
-                  onClick={() => setIsVehicleTreeMode(true)}
-                  className={`rounded-xl px-4 py-2 text-xs font-bold transition ${
-                    isVehicleTreeMode ? "bg-[#102b42] text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                  }`}
-                >
-                  Araç Ağacı (Marka → Model → Kasa → Motor)
-                </button>
-              </div>
-
-              <button
-                onClick={() => {
-                  setSelectedCategory({
-                    id: "",
-                    name: "",
-                    slug: "",
-                    parentId: null,
-                    sortOrder: 0,
-                    icon: "",
-                    banner: "",
-                    seoTitle: "",
-                    seoDescription: "",
-                    defaultMargin: 20.0,
-                    isVehicleTree: isVehicleTreeMode,
-                    active: true,
-                  });
-                }}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-[#f36b2b] px-3.5 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-[#df5b20]"
-              >
-                <Plus size={15} />
-                Yeni Kök Kategori Ekle
-              </button>
-            </div>
-
-            {/* Split Screen Container */}
-            <div className="grid grid-cols-1 gap-5 md:grid-cols-12">
-              {/* SOL PANEL (%35): Ağaç Yapısı */}
-              <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm md:col-span-5 xl:col-span-4 space-y-4">
-                <div className="relative">
-                  <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <input
-                    type="text"
-                    placeholder="Ağaçta anlık ara…"
-                    value={categorySearch}
-                    onChange={(e) => setCategorySearch(e.target.value)}
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-xs outline-none focus:border-orange-400 focus:bg-white"
-                  />
-                </div>
-
-                <div className="max-h-[600px] overflow-y-auto space-y-1 pr-1">
-                  {categoriesTree
-                    .filter((c) => (isVehicleTreeMode ? c.isVehicleTree : !c.isVehicleTree))
-                    .filter((c) => !categorySearch || c.name.toLowerCase().includes(categorySearch.toLowerCase()))
-                    .map((item) => (
-                      <div key={item.id} className="space-y-1">
-                        <div
-                          onClick={() => setSelectedCategory(item)}
-                          className={`group flex items-center justify-between rounded-xl px-3 py-2.5 text-xs font-bold cursor-pointer transition ${
-                            selectedCategory?.id === item.id
-                              ? "bg-orange-50 text-[#f36b2b] border border-orange-200"
-                              : "hover:bg-slate-50 text-slate-700"
-                          }`}
-                        >
-                          <div className="flex items-center gap-2">
-                            <FolderTree size={16} className="text-slate-400 group-hover:text-orange-500" />
-                            <span>{item.name}</span>
-                            <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">
-                              {item.productCount || 0}
-                            </span>
-                          </div>
-
-                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedCategory({
-                                  id: "",
-                                  name: "",
-                                  slug: "",
-                                  parentId: item.id,
-                                  sortOrder: 0,
-                                  icon: "",
-                                  banner: "",
-                                  seoTitle: "",
-                                  seoDescription: "",
-                                  defaultMargin: item.defaultMargin || 20.0,
-                                  isVehicleTree: item.isVehicleTree,
-                                  active: true,
-                                });
-                              }}
-                              title="Alt Kırılım Ekle"
-                              className="rounded-md p-1 hover:bg-slate-200 text-slate-600"
-                            >
-                              <Plus size={13} />
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* Render Children */}
-                        {item.children && item.children.length > 0 && (
-                          <div className="ml-5 border-l-2 border-slate-100 pl-2 space-y-1">
-                            {item.children.map((child) => (
-                              <div
-                                key={child.id}
-                                onClick={() => setSelectedCategory(child)}
-                                className={`flex items-center justify-between rounded-lg px-2.5 py-1.5 text-xs font-semibold cursor-pointer transition ${
-                                  selectedCategory?.id === child.id
-                                    ? "bg-orange-50 text-[#f36b2b]"
-                                    : "hover:bg-slate-50 text-slate-600"
-                                }`}
-                              >
-                                <span>↳ {child.name}</span>
-                                <span className="text-[10px] text-slate-400">%{child.defaultMargin}</span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                </div>
-              </div>
-
-              {/* SAĞ PANEL (%65): Düzenleme Formu */}
-              <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm md:col-span-7 xl:col-span-8">
-                {selectedCategory ? (
-                  <form
-                    onSubmit={async (e) => {
-                      e.preventDefault();
-                      setSavingCategory(true);
-                      try {
-                        const res = await fetch("/api/admin/categories", {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({
-                            action: "upsert",
-                            ...selectedCategory,
-                          }),
-                        });
-                        if (res.ok) {
-                          try {
-                            const currentMap = JSON.parse(localStorage.getItem("markasi_category_images") || "{}");
-                            const chosen = selectedCategory.icon || selectedCategory.banner;
-                            if (chosen) {
-                              currentMap[selectedCategory.name] = chosen;
-                              if (selectedCategory.slug) currentMap[selectedCategory.slug] = chosen;
-                            }
-                            localStorage.setItem("markasi_category_images", JSON.stringify(currentMap));
-                            window.dispatchEvent(new Event("markasi_categories_updated"));
-                          } catch {}
-                          showToast("Kategori başarıyla kaydedildi!");
-                          void loadCategories();
-                        } else {
-                          showToast("Kategori kaydedilemedi.", "error");
-                        }
-                      } catch {
-                        showToast("Bağlantı hatası.", "error");
-                      } finally {
-                        setSavingCategory(false);
-                      }
-                    }}
-                    className="space-y-4"
-                  >
-                    <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                      <h4 className="text-sm font-extrabold text-slate-900">
-                        {selectedCategory.id ? `Düzenle: ${selectedCategory.name}` : "Yeni Kategori Ekle"}
-                      </h4>
-                      {selectedCategory.id && (
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            if (!confirm(`${selectedCategory.name} kategorisini silmek istediğinize emin misiniz?`)) return;
-                            const res = await fetch(`/api/admin/categories?id=${selectedCategory.id}`, { method: "DELETE" });
-                            if (res.ok) {
-                              showToast("Kategori silindi.");
-                              setSelectedCategory(null);
-                              void loadCategories();
-                            }
-                          }}
-                          className="text-xs font-bold text-rose-600 hover:underline flex items-center gap-1"
-                        >
-                          <Trash2 size={13} /> Kategoriyi Sil
-                        </button>
-                      )}
-                    </div>
-
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                      <div>
-                        <label className="block text-[11px] font-bold text-slate-600">Kategori / Araç Adı *</label>
-                        <input
-                          type="text"
-                          required
-                          value={selectedCategory.name}
-                          onChange={(e) => setSelectedCategory({ ...selectedCategory, name: e.target.value })}
-                          className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs outline-none focus:border-orange-400"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-[11px] font-bold text-slate-600">Üst Kategori</label>
-                        <select
-                          value={selectedCategory.parentId || ""}
-                          onChange={(e) => setSelectedCategory({ ...selectedCategory, parentId: e.target.value || null })}
-                          className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs outline-none focus:border-orange-400"
-                        >
-                          <option value="">-- Kök Kategori (Üstü Yok) --</option>
-                          {categoriesTree
-                            .filter((c) => c.id !== selectedCategory.id)
-                            .map((c) => (
-                              <option key={c.id} value={c.id}>
-                                {c.name}
-                              </option>
-                            ))}
-                        </select>
-                      </div>
-
-                      <div>
-                        <label className="block text-[11px] font-bold text-slate-600">Varsayılan Kâr Marjı (%)</label>
-                        <input
-                          type="number"
-                          step="0.5"
-                          value={selectedCategory.defaultMargin}
-                          onChange={(e) => setSelectedCategory({ ...selectedCategory, defaultMargin: parseFloat(e.target.value) || 0 })}
-                          className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs outline-none focus:border-orange-400"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-[11px] font-bold text-slate-600">Sıra Numarası</label>
-                        <input
-                          type="number"
-                          value={selectedCategory.sortOrder}
-                          onChange={(e) => setSelectedCategory({ ...selectedCategory, sortOrder: parseInt(e.target.value) || 0 })}
-                          className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs outline-none focus:border-orange-400"
-                        />
-                      </div>
-
-                      {/* Category Banner / Cover Image */}
-                      <div className="sm:col-span-2 rounded-2xl border border-slate-200/80 bg-slate-50/70 p-3.5 space-y-2.5">
-                        <div className="flex items-center justify-between">
-                          <label className="block text-[11px] font-black uppercase tracking-wider text-slate-700">
-                            Kategori Görseli / Banner (Kapak Resmi)
-                          </label>
-                          {selectedCategory.banner && (
-                            <button
-                              type="button"
-                              onClick={async () => {
-                              const updated = { ...selectedCategory, banner: "" };
-                              setSelectedCategory(updated);
-                              try {
-                                const currentMap = JSON.parse(localStorage.getItem("markasi_category_images") || "{}");
-                                delete currentMap[selectedCategory.name];
-                                if (selectedCategory.slug) delete currentMap[selectedCategory.slug];
-                                localStorage.setItem("markasi_category_images", JSON.stringify(currentMap));
-                                window.dispatchEvent(new Event("markasi_categories_updated"));
-                              } catch {}
-                              await fetch("/api/admin/categories", {
-                                method: "POST",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({ action: "upsert", ...updated }),
-                              });
-                              showToast("Banner görseli kaldırıldı.");
-                            }}
-                              className="text-[10px] font-bold text-red-600 hover:text-red-700 inline-flex items-center gap-1 hover:underline"
-                            >
-                              <Trash2 size={12} /> Görseli Kaldır
-                            </button>
-                          )}
-                        </div>
-
-                        <div className="flex gap-2">
-                          <input
-                            type="text"
-                            placeholder="Örn: /categories/balata-fren.svg veya https://..."
-                            value={selectedCategory.banner}
-                            onChange={(e) => setSelectedCategory({ ...selectedCategory, banner: e.target.value })}
-                            className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs outline-none focus:border-orange-400"
-                          />
-                          <label className="cursor-pointer shrink-0 inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 transition shadow-sm">
-                            <Upload size={13} className={uploadingCatImg === "banner" ? "animate-bounce text-orange-500" : "text-slate-500"} />
-                            <span>{uploadingCatImg === "banner" ? "Yükleniyor..." : "Dosyadan Yükle"}</span>
-                            <input
-                              type="file"
-                              accept="image/*"
-                              className="hidden"
-                              disabled={uploadingCatImg !== null}
-                              onChange={(e) => {
-                                const file = e.target.files?.[0];
-                                if (file) void handleCategoryUpload("banner", file);
-                              }}
-                            />
-                          </label>
-                        </div>
-
-                        {selectedCategory.banner && (
-                          <div className="flex items-center gap-3 pt-1">
-                            <div className="relative h-14 w-28 overflow-hidden rounded-xl border border-slate-200 bg-slate-100 shadow-inner">
-                              <img
-                                src={selectedCategory.banner}
-                                alt="Önizleme"
-                                className="size-full object-cover"
-                                onError={(e) => {
-                                  (e.currentTarget as HTMLElement).style.display = "none";
-                                }}
-                              />
-                            </div>
-                            <span className="text-[11px] font-medium text-slate-500">Banner önizleme aktif</span>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Category Icon */}
-                      <div className="sm:col-span-2 rounded-2xl border border-slate-200/80 bg-slate-50/70 p-3.5 space-y-2.5">
-                        <div className="flex items-center justify-between">
-                          <label className="block text-[11px] font-black uppercase tracking-wider text-slate-700">
-                            Kategori İkonu (SVG / PNG)
-                          </label>
-                          {selectedCategory.icon && (
-                            <button
-                              type="button"
-                              onClick={async () => {
-                              const updated = { ...selectedCategory, icon: "" };
-                              setSelectedCategory(updated);
-                              try {
-                                const currentMap = JSON.parse(localStorage.getItem("markasi_category_images") || "{}");
-                                delete currentMap[selectedCategory.name];
-                                if (selectedCategory.slug) delete currentMap[selectedCategory.slug];
-                                localStorage.setItem("markasi_category_images", JSON.stringify(currentMap));
-                                window.dispatchEvent(new Event("markasi_categories_updated"));
-                              } catch {}
-                              await fetch("/api/admin/categories", {
-                                method: "POST",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({ action: "upsert", ...updated }),
-                              });
-                              showToast("İkon kaldırıldı.");
-                            }}
-                              className="text-[10px] font-bold text-red-600 hover:text-red-700 inline-flex items-center gap-1 hover:underline"
-                            >
-                              <Trash2 size={12} /> İkonu Kaldır
-                            </button>
-                          )}
-                        </div>
-
-                        <div className="flex gap-2">
-                          <input
-                            type="text"
-                            placeholder="Örn: /categories/fren-sistemi.svg veya https://..."
-                            value={selectedCategory.icon}
-                            onChange={(e) => setSelectedCategory({ ...selectedCategory, icon: e.target.value })}
-                            className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs outline-none focus:border-orange-400"
-                          />
-                          <label className="cursor-pointer shrink-0 inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 transition shadow-sm">
-                            <Upload size={13} className={uploadingCatImg === "icon" ? "animate-bounce text-orange-500" : "text-slate-500"} />
-                            <span>{uploadingCatImg === "icon" ? "Yükleniyor..." : "Dosyadan Yükle"}</span>
-                            <input
-                              type="file"
-                              accept="image/*"
-                              className="hidden"
-                              disabled={uploadingCatImg !== null}
-                              onChange={(e) => {
-                                const file = e.target.files?.[0];
-                                if (file) void handleCategoryUpload("icon", file);
-                              }}
-                            />
-                          </label>
-                        </div>
-
-                        {selectedCategory.icon && (
-                          <div className="flex items-center gap-3 pt-1">
-                            <div className="relative size-12 overflow-hidden rounded-xl border border-slate-200 bg-slate-100 p-1.5 shadow-inner">
-                              <img
-                                src={selectedCategory.icon}
-                                alt="İkon Önizleme"
-                                className="size-full object-contain"
-                                onError={(e) => {
-                                  (e.currentTarget as HTMLElement).style.display = "none";
-                                }}
-                              />
-                            </div>
-                            <span className="text-[11px] font-medium text-slate-500">İkon önizleme aktif</span>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Quick Reset Button if any image is set */}
-                      {(selectedCategory.banner || selectedCategory.icon) && (
-                        <div className="sm:col-span-2">
-                          <button
-                            type="button"
-                            onClick={() => setSelectedCategory({ ...selectedCategory, banner: "", icon: "" })}
-                            className="w-full py-2 px-3 rounded-xl border border-amber-200 bg-amber-50 text-amber-800 text-xs font-bold hover:bg-amber-100 transition flex items-center justify-center gap-2"
-                          >
-                            <Trash2 size={13} /> Tüm Görselleri Temizle (Varsayılan Sistem İkonunu Kullan)
-                          </button>
-                        </div>
-                      )}
-
-                      <div className="sm:col-span-2">
-                        <label className="block text-[11px] font-bold text-slate-600">SEO Başlığı (Title)</label>
-                        <input
-                          type="text"
-                          value={selectedCategory.seoTitle}
-                          onChange={(e) => setSelectedCategory({ ...selectedCategory, seoTitle: e.target.value })}
-                          className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs outline-none focus:border-orange-400"
-                        />
-                      </div>
-
-                      <div className="sm:col-span-2">
-                        <label className="block text-[11px] font-bold text-slate-600">Meta Açıklaması (Description)</label>
-                        <textarea
-                          rows={2}
-                          value={selectedCategory.seoDescription}
-                          onChange={(e) => setSelectedCategory({ ...selectedCategory, seoDescription: e.target.value })}
-                          className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs outline-none focus:border-orange-400"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between pt-4 border-t border-slate-100">
-                      <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-700">
-                        <input
-                          type="checkbox"
-                          checked={selectedCategory.active}
-                          onChange={(e) => setSelectedCategory({ ...selectedCategory, active: e.target.checked })}
-                          className="size-4 rounded accent-[#f36b2b]"
-                        />
-                        Kategori Aktif ve Sitede Görünür
-                      </label>
-
+                  <div className="flex items-center gap-2 min-w-0 flex-1 pr-2">
+                    {hasChildren ? (
                       <button
-                        type="submit"
-                        disabled={savingCategory}
-                        className="inline-flex items-center gap-2 rounded-xl bg-[#f36b2b] px-5 py-2.5 text-xs font-extrabold text-white shadow-md transition hover:bg-[#df5b20] disabled:opacity-50"
+                        type="button"
+                        onClick={(e) => toggleExpand(item.id, e)}
+                        className="p-0.5 rounded hover:bg-slate-200 text-slate-400 hover:text-slate-700 transition shrink-0"
                       >
-                        {savingCategory ? <LoaderCircle size={14} className="animate-spin" /> : <Save size={14} />}
-                        Kaydet
+                        {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                       </button>
-                    </div>
-                  </form>
-                ) : (
-                  <div className="flex h-64 flex-col items-center justify-center text-center text-slate-400">
-                    <FolderTree size={40} className="mb-2 text-slate-300" />
-                    <p className="text-xs font-bold text-slate-600">Düzenlemek için sol taraftan bir kategori seçin</p>
-                    <p className="text-[10px] text-slate-400">veya yukarıdaki butondan yeni kök kategori oluşturun</p>
+                    ) : (
+                      <span className="w-3.5 shrink-0" />
+                    )}
+
+                    {isVehicleTreeMode ? (
+                      <Car size={15} className={`shrink-0 ${isSelected ? "text-[#f36b2b]" : "text-slate-400 group-hover:text-orange-500"}`} />
+                    ) : (
+                      <FolderTree size={15} className={`shrink-0 ${isSelected ? "text-[#f36b2b]" : "text-slate-400 group-hover:text-orange-500"}`} />
+                    )}
+
+                    <span className="truncate">{item.name}</span>
+
+                    {/* Badges */}
+                    {isVehicleTreeMode ? (
+                      hasChildren && (
+                        <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-semibold text-slate-500 shrink-0">
+                          {item.children!.length} {depth === 0 ? "model" : "kırılım"}
+                        </span>
+                      )
+                    ) : (
+                      <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-medium text-slate-500 shrink-0">
+                        {item.productCount || 0} ürün
+                      </span>
+                    )}
+
+                    {!item.active && (
+                      <span className="rounded bg-rose-50 px-1.5 py-0.5 text-[9px] font-bold text-rose-500 shrink-0">
+                        Pasif
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition shrink-0">
+                    <button
+                      type="button"
+                      onClick={(e) => handleAddChildCategory(item, e)}
+                      title="Alt Kırılım / Model Ekle"
+                      className="rounded-lg p-1 hover:bg-orange-100 text-slate-500 hover:text-orange-600 transition"
+                    >
+                      <Plus size={13} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Recursive Children */}
+                {hasChildren && isExpanded && (
+                  <div className="border-l border-slate-200 ml-4 pl-1 space-y-1">
+                    {item.children!.map((child) => renderCategoryNode(child, depth + 1))}
                   </div>
                 )}
               </div>
+            );
+          };
+
+          return (
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white p-4 border border-slate-200 shadow-sm">
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => handleModeSwitch(false)}
+                    className={`rounded-xl px-4 py-2 text-xs font-bold transition ${
+                      !isVehicleTreeMode ? "bg-[#102b42] text-white shadow-xs" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                    }`}
+                  >
+                    Parça Kategorileri ({catStats.total > 0 && !isVehicleTreeMode ? catStats.total : "Fren, Motor vb."})
+                  </button>
+                  <button
+                    onClick={() => handleModeSwitch(true)}
+                    className={`rounded-xl px-4 py-2 text-xs font-bold transition ${
+                      isVehicleTreeMode ? "bg-[#102b42] text-white shadow-xs" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                    }`}
+                  >
+                    Araç Ağacı (56 Marka, 1.220+ Model)
+                  </button>
+                </div>
+
+                <button
+                  onClick={handleNewRootCategory}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-[#f36b2b] px-3.5 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-[#df5b20]"
+                >
+                  <Plus size={15} />
+                  {isVehicleTreeMode ? "Yeni Araç Markası Ekle" : "Yeni Kök Kategori Ekle"}
+                </button>
+              </div>
+
+              {/* Split Screen Container */}
+              <div className="grid grid-cols-1 gap-5 md:grid-cols-12">
+                {/* SOL PANEL (%35): Ağaç Yapısı */}
+                <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm md:col-span-5 xl:col-span-4 space-y-3">
+                  <div className="relative">
+                    <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder={
+                        isVehicleTreeMode
+                          ? "Marka veya model ara (örn: Epica, Golf, Corsa)…"
+                          : "Kategori ara (örn: Fren, Filtre)…"
+                      }
+                      value={categorySearch}
+                      onChange={(e) => setCategorySearch(e.target.value)}
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2 pl-9 pr-8 text-xs outline-none focus:border-orange-400 focus:bg-white"
+                    />
+                    {categorySearch && (
+                      <button
+                        type="button"
+                        onClick={() => setCategorySearch("")}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 rounded-full hover:bg-slate-200 text-slate-400"
+                      >
+                        <X size={13} />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Toolbar & Stats */}
+                  <div className="flex items-center justify-between text-[11px] text-slate-500 px-1 border-b border-slate-100 pb-2">
+                    <span className="font-medium truncate">
+                      {categorySearch ? (
+                        <span className="font-semibold text-orange-600">
+                          &quot;{categorySearch}&quot; araması: {filteredTree.length} sonuç
+                        </span>
+                      ) : isVehicleTreeMode ? (
+                        `${catStats.root} Marka, ${catStats.sub} Model`
+                      ) : (
+                        `${catStats.root} Ana Kategori, ${catStats.sub} Alt Kırılım`
+                      )}
+                    </span>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={expandAll}
+                        className="text-[10px] font-bold text-slate-600 hover:text-orange-600 transition"
+                      >
+                        Tümünü Aç
+                      </button>
+                      <span>•</span>
+                      <button
+                        type="button"
+                        onClick={collapseAll}
+                        className="text-[10px] font-bold text-slate-600 hover:text-orange-600 transition"
+                      >
+                        Kapat
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Node List */}
+                  <div className="max-h-[640px] overflow-y-auto space-y-1 pr-1">
+                    {filteredTree.length > 0 ? (
+                      filteredTree.map((item) => renderCategoryNode(item, 0))
+                    ) : (
+                      <div className="py-8 text-center text-slate-400 text-xs">
+                        {categorySearch
+                          ? `"${categorySearch}" ile eşleşen sonuç bulunamadı.`
+                          : "Henüz kategori bulunmuyor."}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* SAĞ PANEL (%65): Düzenleme Formu */}
+                <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm md:col-span-7 xl:col-span-8">
+                  {selectedCategory ? (
+                    <form
+                      onSubmit={async (e) => {
+                        e.preventDefault();
+                        setSavingCategory(true);
+                        try {
+                          const res = await fetch("/api/admin/categories", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                              action: "upsert",
+                              ...selectedCategory,
+                            }),
+                          });
+                          if (res.ok) {
+                            showToast(
+                              isVehicleTreeMode
+                                ? "Araç ağacı düğümü başarıyla kaydedildi!"
+                                : "Kategori başarıyla kaydedildi!"
+                            );
+                            void loadCategories();
+                            window.dispatchEvent(new Event("markasi_categories_updated"));
+                          } else {
+                            const errBody = await res.json().catch(() => ({}));
+                            showToast(errBody.error || "Kategori kaydedilemedi.", "error");
+                          }
+                        } catch {
+                          showToast("Bağlantı hatası oluştu.", "error");
+                        } finally {
+                          setSavingCategory(false);
+                        }
+                      }}
+                      className="space-y-4"
+                    >
+                      <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                        <div>
+                          <h4 className="text-sm font-extrabold text-slate-900">
+                            {selectedCategory.id
+                              ? `Düzenle: ${selectedCategory.name}`
+                              : selectedCategory.parentId
+                              ? `Yeni Alt Kırılım Ekle (Üst ID: ${selectedCategory.parentId})`
+                              : isVehicleTreeMode
+                              ? "Yeni Araç Markası Ekle"
+                              : "Yeni Kök Kategori Ekle"}
+                          </h4>
+                          <span className="text-[10px] text-slate-400">
+                            {isVehicleTreeMode
+                              ? "Araç Uyumluluk Ağacı (Yedek Parça Fitment)"
+                              : "Ürün Parça Kategorisi"}
+                          </span>
+                        </div>
+
+                        {selectedCategory.id && (
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              if (!confirm(`"${selectedCategory.name}" kaydını silmek istediğinize emin misiniz?`)) return;
+                              const res = await fetch(`/api/admin/categories?id=${encodeURIComponent(selectedCategory.id)}`, {
+                                method: "DELETE",
+                              });
+                              if (res.ok) {
+                                showToast("Kayıt başarıyla silindi.");
+                                setSelectedCategory(null);
+                                void loadCategories();
+                                window.dispatchEvent(new Event("markasi_categories_updated"));
+                              } else {
+                                showToast("Silme işlemi başarısız oldu.", "error");
+                              }
+                            }}
+                            className="text-xs font-bold text-rose-600 hover:underline flex items-center gap-1"
+                          >
+                            <Trash2 size={13} /> {isVehicleTreeMode ? "Düğümü Sil" : "Kategoriyi Sil"}
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-600">
+                            {isVehicleTreeMode ? "Marka / Model Adı *" : "Kategori Adı *"}
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={selectedCategory.name}
+                            onChange={(e) => setSelectedCategory({ ...selectedCategory, name: e.target.value })}
+                            className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs outline-none focus:border-orange-400"
+                            placeholder={isVehicleTreeMode ? "Örn: Epica, Captiva, Cruze" : "Örn: Fren Sistemi, Filtreler"}
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-600">Üst Kategori / Üst Düğüm</label>
+                          <select
+                            value={selectedCategory.parentId || ""}
+                            onChange={(e) =>
+                              setSelectedCategory({
+                                ...selectedCategory,
+                                parentId: e.target.value || null,
+                              })
+                            }
+                            className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs outline-none focus:border-orange-400 font-mono"
+                          >
+                            <option value="">
+                              {isVehicleTreeMode ? "-- Kök Düğüm (Yeni Marka) --" : "-- Kök Kategori (Üstü Yok) --"}
+                            </option>
+                            {parentOptions.map((opt) => (
+                              <option key={opt.id} value={opt.id} disabled={opt.disabled}>
+                                {"   ".repeat(opt.depth)}
+                                {opt.depth > 0 ? "↳ " : ""}
+                                {opt.name}
+                                {opt.disabled ? " (Geçersiz: Kendisi/Altı)" : ""}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-600">Varsayılan Kâr Marjı (%)</label>
+                          <input
+                            type="number"
+                            step="0.5"
+                            value={selectedCategory.defaultMargin}
+                            onChange={(e) =>
+                              setSelectedCategory({
+                                ...selectedCategory,
+                                defaultMargin: parseFloat(e.target.value) || 0,
+                              })
+                            }
+                            className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs outline-none focus:border-orange-400"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-600">Sıra Numarası</label>
+                          <input
+                            type="number"
+                            value={selectedCategory.sortOrder}
+                            onChange={(e) =>
+                              setSelectedCategory({
+                                ...selectedCategory,
+                                sortOrder: parseInt(e.target.value, 10) || 0,
+                              })
+                            }
+                            className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs outline-none focus:border-orange-400"
+                          />
+                        </div>
+
+                        {/* Category Banner / Cover Image */}
+                        <div className="sm:col-span-2 rounded-2xl border border-slate-200/80 bg-slate-50/70 p-3.5 space-y-2.5">
+                          <div className="flex items-center justify-between">
+                            <label className="block text-[11px] font-black uppercase tracking-wider text-slate-700">
+                              {isVehicleTreeMode ? "Araç / Marka Görseli" : "Kategori Görseli / Banner"}
+                            </label>
+                            {selectedCategory.banner && (
+                              <button
+                                type="button"
+                                onClick={() => setSelectedCategory({ ...selectedCategory, banner: "" })}
+                                className="text-[10px] font-bold text-red-600 hover:text-red-700 inline-flex items-center gap-1 hover:underline"
+                              >
+                                <Trash2 size={12} /> Görseli Kaldır
+                              </button>
+                            )}
+                          </div>
+
+                          <div className="flex gap-2">
+                            <input
+                              type="text"
+                              placeholder="Örn: /categories/balata-fren.svg veya https://..."
+                              value={selectedCategory.banner}
+                              onChange={(e) => setSelectedCategory({ ...selectedCategory, banner: e.target.value })}
+                              className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs outline-none focus:border-orange-400"
+                            />
+                            <label className="cursor-pointer shrink-0 inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 transition shadow-sm">
+                              <Upload
+                                size={13}
+                                className={uploadingCatImg === "banner" ? "animate-bounce text-orange-500" : "text-slate-500"}
+                              />
+                              <span>{uploadingCatImg === "banner" ? "Yükleniyor..." : "Dosyadan Yükle"}</span>
+                              <input
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                disabled={uploadingCatImg !== null}
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0];
+                                  if (file) void handleCategoryUpload("banner", file);
+                                }}
+                              />
+                            </label>
+                          </div>
+
+                          {selectedCategory.banner && (
+                            <div className="flex items-center gap-3 pt-1">
+                              <div className="relative h-14 w-28 overflow-hidden rounded-xl border border-slate-200 bg-slate-100 shadow-inner">
+                                <img
+                                  src={selectedCategory.banner}
+                                  alt="Önizleme"
+                                  className="size-full object-cover"
+                                  onError={(e) => {
+                                    (e.currentTarget as HTMLElement).style.display = "none";
+                                  }}
+                                />
+                              </div>
+                              <span className="text-[11px] font-medium text-slate-500">Banner önizleme aktif</span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Category Icon */}
+                        <div className="sm:col-span-2 rounded-2xl border border-slate-200/80 bg-slate-50/70 p-3.5 space-y-2.5">
+                          <div className="flex items-center justify-between">
+                            <label className="block text-[11px] font-black uppercase tracking-wider text-slate-700">
+                              {isVehicleTreeMode ? "Logo / İkon" : "Kategori İkonu (SVG / PNG)"}
+                            </label>
+                            {selectedCategory.icon && (
+                              <button
+                                type="button"
+                                onClick={() => setSelectedCategory({ ...selectedCategory, icon: "" })}
+                                className="text-[10px] font-bold text-red-600 hover:text-red-700 inline-flex items-center gap-1 hover:underline"
+                              >
+                                <Trash2 size={12} /> İkonu Kaldır
+                              </button>
+                            )}
+                          </div>
+
+                          <div className="flex gap-2">
+                            <input
+                              type="text"
+                              placeholder="Örn: /categories/fren-sistemi.svg veya https://..."
+                              value={selectedCategory.icon}
+                              onChange={(e) => setSelectedCategory({ ...selectedCategory, icon: e.target.value })}
+                              className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs outline-none focus:border-orange-400"
+                            />
+                            <label className="cursor-pointer shrink-0 inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 transition shadow-sm">
+                              <Upload
+                                size={13}
+                                className={uploadingCatImg === "icon" ? "animate-bounce text-orange-500" : "text-slate-500"}
+                              />
+                              <span>{uploadingCatImg === "icon" ? "Yükleniyor..." : "Dosyadan Yükle"}</span>
+                              <input
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                disabled={uploadingCatImg !== null}
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0];
+                                  if (file) void handleCategoryUpload("icon", file);
+                                }}
+                              />
+                            </label>
+                          </div>
+
+                          {selectedCategory.icon && (
+                            <div className="flex items-center gap-3 pt-1">
+                              <div className="relative size-12 overflow-hidden rounded-xl border border-slate-200 bg-slate-100 p-1.5 shadow-inner">
+                                <img
+                                  src={selectedCategory.icon}
+                                  alt="İkon Önizleme"
+                                  className="size-full object-contain"
+                                  onError={(e) => {
+                                    (e.currentTarget as HTMLElement).style.display = "none";
+                                  }}
+                                />
+                              </div>
+                              <span className="text-[11px] font-medium text-slate-500">İkon önizleme aktif</span>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="sm:col-span-2">
+                          <label className="block text-[11px] font-bold text-slate-600">SEO Başlığı (Title)</label>
+                          <input
+                            type="text"
+                            value={selectedCategory.seoTitle}
+                            onChange={(e) => setSelectedCategory({ ...selectedCategory, seoTitle: e.target.value })}
+                            className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs outline-none focus:border-orange-400"
+                          />
+                        </div>
+
+                        <div className="sm:col-span-2">
+                          <label className="block text-[11px] font-bold text-slate-600">Meta Açıklaması (Description)</label>
+                          <textarea
+                            rows={2}
+                            value={selectedCategory.seoDescription}
+                            onChange={(e) => setSelectedCategory({ ...selectedCategory, seoDescription: e.target.value })}
+                            className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs outline-none focus:border-orange-400"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between pt-4 border-t border-slate-100">
+                        <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-700">
+                          <input
+                            type="checkbox"
+                            checked={selectedCategory.active}
+                            onChange={(e) => setSelectedCategory({ ...selectedCategory, active: e.target.checked })}
+                            className="size-4 rounded accent-[#f36b2b]"
+                          />
+                          Kayıt Aktif ve Sitede Görünür
+                        </label>
+
+                        <button
+                          type="submit"
+                          disabled={savingCategory}
+                          className="inline-flex items-center gap-2 rounded-xl bg-[#f36b2b] px-5 py-2.5 text-xs font-extrabold text-white shadow-md transition hover:bg-[#df5b20] disabled:opacity-50"
+                        >
+                          {savingCategory ? <LoaderCircle size={14} className="animate-spin" /> : <Save size={14} />}
+                          Kaydet
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    <div className="flex h-64 flex-col items-center justify-center text-center text-slate-400">
+                      {isVehicleTreeMode ? (
+                        <Car size={40} className="mb-2 text-slate-300" />
+                      ) : (
+                        <FolderTree size={40} className="mb-2 text-slate-300" />
+                      )}
+                      <p className="text-xs font-bold text-slate-600">
+                        Düzenlemek için sol taraftan bir {isVehicleTreeMode ? "araç/model" : "kategori"} seçin
+                      </p>
+                      <p className="text-[10px] text-slate-400">
+                        veya yukarıdaki butondan yeni {isVehicleTreeMode ? "araç markası" : "kök kategori"} oluşturun
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* ============================================================== */}
         {/* 3. EVRENSEL LİNK İLE OTOMATİK ÜRÜN ÇEKİCİ (UNIVERSAL SCRAPER) */}
@@ -5536,9 +5744,9 @@ async function compressImageFile(file: File, maxWidth = 1000, maxHeight = 1000, 
                         className="w-full rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-bold outline-none focus:border-orange-400"
                       >
                         <option value="">Marka Seçin...</option>
-                        {vehicleCatalog.map((b) => (
-                          <option key={b.label} value={b.label}>
-                            {b.label}
+                        {allVehicleBrands.map((brandName) => (
+                          <option key={brandName} value={brandName}>
+                            {brandName}
                           </option>
                         ))}
                       </select>
