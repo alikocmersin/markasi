@@ -440,6 +440,7 @@ export default function EnterpriseAdminSuite() {
   const [scraperMarkupValue, setScraperMarkupValue] = useState<number>(25);
   const [syncStatusReport, setSyncStatusReport] = useState<string>("");
   const [currentOrigin, setCurrentOrigin] = useState("");
+  const bookmarkletAnchorRef = useRef<HTMLAnchorElement>(null);
 
   // 3. Products & WMS State
   const [products, setProducts] = useState<Product[]>([]);
@@ -1757,6 +1758,17 @@ async function compressImageFile(file: File, maxWidth = 1000, maxHeight = 1000, 
       setCurrentOrigin(window.location.origin);
     }
   }, []);
+
+  const bookmarkletCode = useMemo(() => {
+    const origin = currentOrigin || (typeof window !== "undefined" ? window.location.origin : "");
+    return `javascript:(function(){try{var h=document.documentElement.outerHTML;var u=window.location.href;var w=window.open('${origin}/admin?tab=scraper&auto=1','_blank');if(!w){alert('Pop-up penceresine izin verin.');return;}var a=0;var t=setInterval(function(){a++;w.postMessage({type:'MARKASI_BOOKMARKLET_IMPORT',html:h,url:u},'*');if(a>25)clearInterval(t);},400);window.addEventListener('message',function hdl(e){if(e.data==='MARKASI_BOOKMARKLET_OK'){clearInterval(t);window.removeEventListener('message',hdl);}});}catch(e){alert('Hata:'+e.message);}})();`;
+  }, [currentOrigin]);
+
+  useEffect(() => {
+    if (bookmarkletAnchorRef.current && bookmarkletCode) {
+      bookmarkletAnchorRef.current.setAttribute("href", bookmarkletCode);
+    }
+  }, [bookmarkletCode, scrapeMode]);
 
   const runScrapeRequest = async (payload: { url?: string; rawHtml?: string }) => {
     setScraping(true);
@@ -3275,30 +3287,40 @@ async function compressImageFile(file: File, maxWidth = 1000, maxHeight = 1000, 
                       <li>Aşağıdaki turuncu butonu farenizle tutup tarayıcınızın Yer İmleri çubuğuna sürükleyip bırakın:</li>
                     </ol>
 
-                    <div className="py-2 flex items-center gap-3">
+                    <div className="py-2 flex flex-wrap items-center gap-3">
                       <a
-                        href={`javascript:(function(){try{var h=document.documentElement.outerHTML;var u=window.location.href;var w=window.open('${currentOrigin || ""}/admin?tab=scraper&auto=1','_blank');if(!w){alert('Pop-up penceresine izin verin.');return;}var a=0;var t=setInterval(function(){a++;w.postMessage({type:'MARKASI_BOOKMARKLET_IMPORT',html:h,url:u},'*');if(a>25)clearInterval(t);},400);window.addEventListener('message',function hdl(e){if(e.data==='MARKASI_BOOKMARKLET_OK'){clearInterval(t);window.removeEventListener('message',hdl);}});}catch(e){alert('Hata:'+e.message);}})();`}
+                        ref={bookmarkletAnchorRef}
+                        href="#markasi-bookmarklet"
                         draggable
                         onClick={(e) => {
                           e.preventDefault();
-                          showToast("Bu butonu farenizle tutup tarayıcınızın Yer İmleri (Sık Kullanılanlar) çubuğuna sürükleyin!");
+                          showToast("Bu butonu farenizle tutup yukarıdaki Yer İmleri (Sık Kullanılanlar) çubuğunuza sürükleyin!");
                         }}
-                        className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-amber-500 to-[#f36b2b] px-6 py-3 text-xs font-black text-white shadow-md hover:scale-105 active:scale-95 transition cursor-grab"
+                        className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-amber-500 to-[#f36b2b] px-6 py-3.5 text-xs font-black text-white shadow-md hover:scale-105 active:scale-95 transition cursor-grab"
                       >
-                        <Zap size={15} /> ⚡ Markasi&apos;ya Aktar (Sürükleyin)
+                        <Zap size={16} /> ⚡ Markasi&apos;ya Aktar (Sürükleyin)
                       </a>
 
                       <button
                         type="button"
                         onClick={() => {
-                          const code = `javascript:(function(){try{var h=document.documentElement.outerHTML;var u=window.location.href;var w=window.open('${currentOrigin || ""}/admin?tab=scraper&auto=1','_blank');if(!w){alert('Pop-up penceresine izin verin.');return;}var a=0;var t=setInterval(function(){a++;w.postMessage({type:'MARKASI_BOOKMARKLET_IMPORT',html:h,url:u},'*');if(a>25)clearInterval(t);},400);window.addEventListener('message',function hdl(e){if(e.data==='MARKASI_BOOKMARKLET_OK'){clearInterval(t);window.removeEventListener('message',hdl);}});}catch(e){alert('Hata:'+e.message);}})();`;
-                          navigator.clipboard.writeText(code);
-                          showToast("Yer imi JavaScript kodu panoya kopyalandı!");
+                          navigator.clipboard.writeText(bookmarkletCode);
+                          showToast("Yer imi kodu panoya kopyalandı! Şimdi tarayıcınızın yer imlerine yapıştırabilirsiniz.");
                         }}
-                        className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 transition"
+                        className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-100 transition"
                       >
-                        <Copy size={13} /> Kodu Kopyala
+                        <Copy size={14} /> 📋 Kodu Kopyala
                       </button>
+                    </div>
+
+                    <div className="rounded-xl bg-slate-50 p-3.5 text-xs text-slate-600 border border-slate-200/60 space-y-2">
+                      <p className="font-bold text-slate-800">💡 Sürükleyemiyorsanız (Alternatif Kolay Kurulum):</p>
+                      <ol className="list-decimal pl-4 text-[11px] leading-relaxed space-y-1">
+                        <li>Yukarıdaki <strong>&quot;📋 Kodu Kopyala&quot;</strong> butonuna basın.</li>
+                        <li>Tarayıcınızın üstündeki Yer İmleri çubuğunda boş bir yere sağ tıklayıp <strong>&quot;Sayfa Ekle...&quot;</strong> veya <strong>&quot;Yer İmi Ekle...&quot;</strong> deyin.</li>
+                        <li>İsim kısmına: <code className="font-mono bg-white px-1.5 py-0.5 rounded border border-slate-200">⚡ Markasi&apos;ya Aktar</code> yazın.</li>
+                        <li>URL / Adres kısmına: Kopyaladığınız kodu yapıştırın ve <strong>Kaydet</strong> butonuna basın!</li>
+                      </ol>
                     </div>
 
                     <div className="rounded-xl bg-slate-50 p-3 text-xs text-slate-600 border border-slate-200/60">
