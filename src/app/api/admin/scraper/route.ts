@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAdmin, isSameOrigin } from "@/lib/auth";
 import { readJsonObject } from "@/lib/request";
-import { checkSourcePriceAndStock, scrapeCategoryUrl, scrapeProductUrl } from "@/lib/scraper";
+import { checkSourcePriceAndStock, parseProductHtml, scrapeCategoryUrl, scrapeProductUrl } from "@/lib/scraper";
 import { recordAuditLog } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
@@ -62,16 +62,22 @@ export async function POST(request: Request) {
     }
   }
 
+  const rawHtml = typeof body.rawHtml === "string" ? body.rawHtml.trim() : "";
   const url = String(body.url || "").trim();
-  if (!url) {
-    return NextResponse.json({ error: "Lütfen bir ürün bağlantısı girin." }, { status: 400 });
+  if (!url && !rawHtml) {
+    return NextResponse.json(
+      { error: "Lütfen bir ürün bağlantısı girin veya sayfa kaynağını (HTML) yapıştırın." },
+      { status: 400 }
+    );
   }
 
   const markupPercent = Number(body.markupPercent || 0);
   const markupAmount = Number(body.markupAmount || 0); // in kurus
 
   try {
-    const scraped = await scrapeProductUrl(url);
+    const scraped = rawHtml
+      ? parseProductHtml(rawHtml, url || "https://manual-import.com")
+      : await scrapeProductUrl(url);
 
     // Calculate suggested sale price
     let calculatedPrice = scraped.price;

@@ -145,9 +145,13 @@ async function fetchTargetHtml(urlObj: URL, timeoutMs = 15000): Promise<string> 
   }
 }
 
-export async function scrapeProductUrl(targetUrl: string): Promise<ScrapedProduct> {
-  const urlObj = validateScraperUrl(targetUrl);
-  const html = await fetchTargetHtml(urlObj, 15000);
+export function parseProductHtml(html: string, targetUrl: string): ScrapedProduct {
+  let urlObj: URL;
+  try {
+    urlObj = new URL(targetUrl);
+  } catch {
+    urlObj = new URL("https://manual-import.com");
+  }
   const $ = cheerio.load(html);
 
   let name = "";
@@ -289,6 +293,12 @@ export async function scrapeProductUrl(targetUrl: string): Promise<ScrapedProduc
     images: Array.from(imagesSet).slice(0, 10),
     inStock,
   };
+}
+
+export async function scrapeProductUrl(targetUrl: string): Promise<ScrapedProduct> {
+  const urlObj = validateScraperUrl(targetUrl);
+  const html = await fetchTargetHtml(urlObj, 15000);
+  return parseProductHtml(html, targetUrl);
 }
 
 export async function checkSourcePriceAndStock(sourceUrl: string): Promise<{

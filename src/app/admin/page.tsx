@@ -430,6 +430,8 @@ export default function EnterpriseAdminSuite() {
 
   // 2. Universal Scraper State
   const [scrapeUrl, setScrapeUrl] = useState("");
+  const [scrapeMode, setScrapeMode] = useState<"url" | "html">("url");
+  const [scrapeHtml, setScrapeHtml] = useState("");
   const [scraping, setScraping] = useState(false);
   const [scrapedData, setScrapedData] = useState<any | null>(null);
   const [scraperMarkupType, setScraperMarkupType] = useState<"percent" | "amount">("percent");
@@ -1750,7 +1752,14 @@ async function compressImageFile(file: File, maxWidth = 1000, maxHeight = 1000, 
   // Scraper action
   const handleScrape = async (e: FormEvent) => {
     e.preventDefault();
-    if (!scrapeUrl.trim()) return;
+    if (scrapeMode === "url" && !scrapeUrl.trim()) {
+      showToast("Lütfen bir ürün linki girin.", "error");
+      return;
+    }
+    if (scrapeMode === "html" && !scrapeHtml.trim()) {
+      showToast("Lütfen sayfa kaynak kodunu (HTML) yapıştırın.", "error");
+      return;
+    }
     setScraping(true);
     setSyncStatusReport("");
     try {
@@ -1759,6 +1768,7 @@ async function compressImageFile(file: File, maxWidth = 1000, maxHeight = 1000, 
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           url: scrapeUrl.trim(),
+          rawHtml: scrapeMode === "html" ? scrapeHtml.trim() : undefined,
           markupPercent: scraperMarkupType === "percent" ? scraperMarkupValue : 0,
           markupAmount: scraperMarkupType === "amount" ? scraperMarkupValue * 100 : 0,
         }),
@@ -1768,7 +1778,16 @@ async function compressImageFile(file: File, maxWidth = 1000, maxHeight = 1000, 
       setScrapedData(data);
       showToast("Ürün bilgileri, görseller ve teknik detaylar başarıyla çekildi!");
     } catch (err: any) {
-      showToast(err.message, "error");
+      const msg = String(err.message || "");
+      if (msg.includes("Cloudflare") || msg.includes("403") || msg.includes("bot koruması")) {
+        setScrapeMode("html");
+        showToast(
+          "Bu site Cloudflare ile sunucu erişimini engelliyor. 'Sayfa Kaynağı (HTML) Yapıştır' sekmesi açıldı, kaynak kodunu yapıştırarak tek tıkla çekebilirsiniz.",
+          "error"
+        );
+      } else {
+        showToast(msg, "error");
+      }
     } finally {
       setScraping(false);
     }
@@ -3146,25 +3165,90 @@ async function compressImageFile(file: File, maxWidth = 1000, maxHeight = 1000, 
                 </div>
               </div>
 
-              <form onSubmit={handleScrape} className="mt-5 space-y-4">
-                <div className="flex flex-col gap-3 sm:flex-row">
-                  <input
-                    type="url"
-                    required
-                    placeholder="Örnek: https://www.yedekparca.com.tr/urun/volkswagen-golf-7-yag-filtresi-04e115561h"
-                    value={scrapeUrl}
-                    onChange={(e) => setScrapeUrl(e.target.value)}
-                    className="flex-1 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs outline-none focus:border-orange-400 focus:bg-white"
-                  />
-                  <button
-                    type="submit"
-                    disabled={scraping}
-                    className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#f36b2b] px-6 py-3 text-xs font-black text-white shadow-md transition hover:bg-[#df5b20] disabled:opacity-50"
-                  >
-                    {scraping ? <LoaderCircle size={16} className="animate-spin" /> : <Link2 size={16} />}
-                    Ürün Bilgilerini Çek
-                  </button>
-                </div>
+              <div className="mt-4 flex flex-wrap gap-2 border-b border-slate-100 pb-3">
+                <button
+                  type="button"
+                  onClick={() => setScrapeMode("url")}
+                  className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition ${
+                    scrapeMode === "url"
+                      ? "bg-slate-900 text-white shadow-sm"
+                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  }`}
+                >
+                  <Link2 size={13} /> Otomatik Link ile Çek
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setScrapeMode("html")}
+                  className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition ${
+                    scrapeMode === "html"
+                      ? "bg-[#f36b2b] text-white shadow-sm"
+                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  }`}
+                >
+                  <FileText size={13} /> Sayfa Kaynağı (HTML) Yapıştır
+                  <span className="rounded-full bg-amber-300 px-1.5 py-0.5 text-[9px] font-black text-slate-900">Cloudflare İçin</span>
+                </button>
+              </div>
+
+              <form onSubmit={handleScrape} className="mt-4 space-y-4">
+                {scrapeMode === "url" ? (
+                  <div className="flex flex-col gap-3 sm:flex-row">
+                    <input
+                      type="url"
+                      required
+                      placeholder="Örnek: https://www.yedekparca.com.tr/urun/volkswagen-golf-7-yag-filtresi-04e115561h"
+                      value={scrapeUrl}
+                      onChange={(e) => setScrapeUrl(e.target.value)}
+                      className="flex-1 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs outline-none focus:border-orange-400 focus:bg-white"
+                    />
+                    <button
+                      type="submit"
+                      disabled={scraping}
+                      className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#f36b2b] px-6 py-3 text-xs font-black text-white shadow-md transition hover:bg-[#df5b20] disabled:opacity-50"
+                    >
+                      {scraping ? <LoaderCircle size={16} className="animate-spin" /> : <Link2 size={16} />}
+                      Ürün Bilgilerini Çek
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="rounded-2xl border border-amber-200 bg-amber-50/80 p-3 text-xs text-amber-900">
+                      <p className="font-bold">💡 Cloudflare / Bot Korumalı Siteler İçin Kesin Çözüm:</p>
+                      <p className="mt-1 text-[11px] text-amber-800 leading-relaxed">
+                        1. Ürünün web sayfasını kendi tarayıcınızda açın.<br />
+                        2. Sayfada boş bir yere sağ tıklayıp <strong>&quot;Sayfa Kaynağını Görüntüle&quot;</strong> (veya <kbd className="rounded bg-white px-1 shadow">Ctrl + U</kbd>) deyin.<br />
+                        3. Açılan kodların tamamını (<kbd className="rounded bg-white px-1 shadow">Ctrl + A</kbd> ardından <kbd className="rounded bg-white px-1 shadow">Ctrl + C</kbd>) kopyalayıp aşağıdaki kutuya yapıştırın.
+                      </p>
+                    </div>
+
+                    <input
+                      type="url"
+                      placeholder="Ürün Sayfası Linki (Görsel adreslerini tamamlamak için - Opsiyonel)"
+                      value={scrapeUrl}
+                      onChange={(e) => setScrapeUrl(e.target.value)}
+                      className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-xs outline-none focus:border-orange-400 focus:bg-white"
+                    />
+
+                    <textarea
+                      rows={5}
+                      required
+                      placeholder="<!DOCTYPE html><html>... Sayfa kaynak kodunu buraya yapıştırın"
+                      value={scrapeHtml}
+                      onChange={(e) => setScrapeHtml(e.target.value)}
+                      className="w-full rounded-2xl border border-slate-200 bg-slate-50 p-4 font-mono text-[11px] outline-none focus:border-orange-400 focus:bg-white"
+                    />
+
+                    <button
+                      type="submit"
+                      disabled={scraping}
+                      className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#f36b2b] px-6 py-3 text-xs font-black text-white shadow-md transition hover:bg-[#df5b20] disabled:opacity-50"
+                    >
+                      {scraping ? <LoaderCircle size={16} className="animate-spin" /> : <FileText size={16} />}
+                      HTML Kaynağından Ayrıştır ve Çek
+                    </button>
+                  </div>
+                )}
 
                 {/* Fiyat Hesaplayıcı Ayarları */}
                 <div className="flex flex-wrap items-center gap-4 rounded-2xl bg-slate-50 p-4 border border-slate-100 text-xs">
