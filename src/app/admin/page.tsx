@@ -83,6 +83,8 @@ import {
   Users,
   Warehouse,
   Wrench,
+  Zap,
+  Bookmark,
   X,
   XCircle,
   Menu,
@@ -430,13 +432,14 @@ export default function EnterpriseAdminSuite() {
 
   // 2. Universal Scraper State
   const [scrapeUrl, setScrapeUrl] = useState("");
-  const [scrapeMode, setScrapeMode] = useState<"url" | "html">("url");
+  const [scrapeMode, setScrapeMode] = useState<"url" | "html" | "bookmarklet">("url");
   const [scrapeHtml, setScrapeHtml] = useState("");
   const [scraping, setScraping] = useState(false);
   const [scrapedData, setScrapedData] = useState<any | null>(null);
   const [scraperMarkupType, setScraperMarkupType] = useState<"percent" | "amount">("percent");
   const [scraperMarkupValue, setScraperMarkupValue] = useState<number>(25);
   const [syncStatusReport, setSyncStatusReport] = useState<string>("");
+  const [currentOrigin, setCurrentOrigin] = useState("");
 
   // 3. Products & WMS State
   const [products, setProducts] = useState<Product[]>([]);
@@ -1749,17 +1752,13 @@ async function compressImageFile(file: File, maxWidth = 1000, maxHeight = 1000, 
     }
   };
 
-  // Scraper action
-  const handleScrape = async (e: FormEvent) => {
-    e.preventDefault();
-    if (scrapeMode === "url" && !scrapeUrl.trim()) {
-      showToast("Lütfen bir ürün linki girin.", "error");
-      return;
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setCurrentOrigin(window.location.origin);
     }
-    if (scrapeMode === "html" && !scrapeHtml.trim()) {
-      showToast("Lütfen sayfa kaynak kodunu (HTML) yapıştırın.", "error");
-      return;
-    }
+  }, []);
+
+  const runScrapeRequest = async (payload: { url?: string; rawHtml?: string }) => {
     setScraping(true);
     setSyncStatusReport("");
     try {
@@ -1767,8 +1766,8 @@ async function compressImageFile(file: File, maxWidth = 1000, maxHeight = 1000, 
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          url: scrapeUrl.trim(),
-          rawHtml: scrapeMode === "html" ? scrapeHtml.trim() : undefined,
+          url: payload.url?.trim(),
+          rawHtml: payload.rawHtml?.trim(),
           markupPercent: scraperMarkupType === "percent" ? scraperMarkupValue : 0,
           markupAmount: scraperMarkupType === "amount" ? scraperMarkupValue * 100 : 0,
         }),
@@ -1792,6 +1791,58 @@ async function compressImageFile(file: File, maxWidth = 1000, maxHeight = 1000, 
       setScraping(false);
     }
   };
+
+  // Scraper action
+  const handleScrape = async (e: FormEvent) => {
+    e.preventDefault();
+    if (scrapeMode === "url" && !scrapeUrl.trim()) {
+      showToast("Lütfen bir ürün linki girin.", "error");
+      return;
+    }
+    if (scrapeMode === "html" && !scrapeHtml.trim()) {
+      showToast("Lütfen sayfa kaynak kodunu (HTML) yapıştırın.", "error");
+      return;
+    }
+    await runScrapeRequest({
+      url: scrapeUrl,
+      rawHtml: scrapeMode === "html" ? scrapeHtml : undefined,
+    });
+  };
+
+  const pasteFromClipboard = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (!text || !text.trim()) {
+        showToast("Panonuzda metin bulunamadı.", "error");
+        return;
+      }
+      setScrapeHtml(text);
+      showToast("Panodaki HTML kodu yapıştırıldı!");
+    } catch {
+      showToast("Pano erişimine izin verilmedi. Lütfen elle yapıştırın.", "error");
+    }
+  };
+
+  useEffect(() => {
+    const handleBookmarkletMessage = (event: MessageEvent) => {
+      if (event.data && event.data.type === "MARKASI_BOOKMARKLET_IMPORT") {
+        const { html, url } = event.data;
+        if (event.source && "postMessage" in event.source) {
+          (event.source as Window).postMessage("MARKASI_BOOKMARKLET_OK", "*");
+        }
+        setActiveTab("scraper");
+        setScrapeMode("html");
+        if (url) setScrapeUrl(url);
+        if (html) {
+          setScrapeHtml(html);
+          showToast("⚡ Tarayıcınızdan ürün kaynak kodu alındı, otomatik ayrıştırılıyor...");
+          void runScrapeRequest({ rawHtml: html, url });
+        }
+      }
+    };
+    window.addEventListener("message", handleBookmarkletMessage);
+    return () => window.removeEventListener("message", handleBookmarkletMessage);
+  }, [scraperMarkupType, scraperMarkupValue]);
 
   // Save scraped product to database
   const handleSaveScrapedProduct = async () => {
@@ -3175,7 +3226,7 @@ async function compressImageFile(file: File, maxWidth = 1000, maxHeight = 1000, 
                       : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                   }`}
                 >
-                  <Link2 size={13} /> Otomatik Link ile Çek
+                  <Link2 size={13} /> 1. Otomatik Link ile Çek
                 </button>
                 <button
                   type="button"
@@ -3186,102 +3237,183 @@ async function compressImageFile(file: File, maxWidth = 1000, maxHeight = 1000, 
                       : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                   }`}
                 >
-                  <FileText size={13} /> Sayfa Kaynağı (HTML) Yapıştır
+                  <FileText size={13} /> 2. Sayfa Kaynağı (HTML) Yapıştır
                   <span className="rounded-full bg-amber-300 px-1.5 py-0.5 text-[9px] font-black text-slate-900">Cloudflare İçin</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setScrapeMode("bookmarklet")}
+                  className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition ${
+                    scrapeMode === "bookmarklet"
+                      ? "bg-amber-500 text-slate-950 shadow-sm"
+                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  }`}
+                >
+                  <Zap size={13} /> 3. Tek Tıkla Yer İmi (Sihirli Buton)
+                  <span className="rounded-full bg-emerald-500 px-1.5 py-0.5 text-[9px] font-black text-white">0 Saniye</span>
                 </button>
               </div>
 
-              <form onSubmit={handleScrape} className="mt-4 space-y-4">
-                {scrapeMode === "url" ? (
-                  <div className="flex flex-col gap-3 sm:flex-row">
-                    <input
-                      type="url"
-                      required
-                      placeholder="Örnek: https://www.yedekparca.com.tr/urun/volkswagen-golf-7-yag-filtresi-04e115561h"
-                      value={scrapeUrl}
-                      onChange={(e) => setScrapeUrl(e.target.value)}
-                      className="flex-1 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs outline-none focus:border-orange-400 focus:bg-white"
-                    />
-                    <button
-                      type="submit"
-                      disabled={scraping}
-                      className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#f36b2b] px-6 py-3 text-xs font-black text-white shadow-md transition hover:bg-[#df5b20] disabled:opacity-50"
-                    >
-                      {scraping ? <LoaderCircle size={16} className="animate-spin" /> : <Link2 size={16} />}
-                      Ürün Bilgilerini Çek
-                    </button>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    <div className="rounded-2xl border border-amber-200 bg-amber-50/80 p-3 text-xs text-amber-900">
-                      <p className="font-bold">💡 Cloudflare / Bot Korumalı Siteler İçin Kesin Çözüm:</p>
-                      <p className="mt-1 text-[11px] text-amber-800 leading-relaxed">
-                        1. Ürünün web sayfasını kendi tarayıcınızda açın.<br />
-                        2. Sayfada boş bir yere sağ tıklayıp <strong>&quot;Sayfa Kaynağını Görüntüle&quot;</strong> (veya <kbd className="rounded bg-white px-1 shadow">Ctrl + U</kbd>) deyin.<br />
-                        3. Açılan kodların tamamını (<kbd className="rounded bg-white px-1 shadow">Ctrl + A</kbd> ardından <kbd className="rounded bg-white px-1 shadow">Ctrl + C</kbd>) kopyalayıp aşağıdaki kutuya yapıştırın.
+              {scrapeMode === "bookmarklet" ? (
+                <div className="mt-4 space-y-4 rounded-3xl border border-amber-200 bg-amber-50/60 p-6">
+                  <div className="flex items-center gap-3">
+                    <div className="grid size-10 place-items-center rounded-2xl bg-amber-500 text-slate-950 shadow-sm">
+                      <Zap size={22} />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-black text-slate-900">Tek Tıkla Tarayıcıdan Aktar (Bookmarklet Sihirbazı)</h4>
+                      <p className="text-xs text-slate-600">
+                        Ctrl+U veya kopyala-yapıştır yapmadan, başka siteleri gezerken tek tıkla ürünü Markasi&apos;ya aktarın!
                       </p>
                     </div>
-
-                    <input
-                      type="url"
-                      placeholder="Ürün Sayfası Linki (Görsel adreslerini tamamlamak için - Opsiyonel)"
-                      value={scrapeUrl}
-                      onChange={(e) => setScrapeUrl(e.target.value)}
-                      className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-xs outline-none focus:border-orange-400 focus:bg-white"
-                    />
-
-                    <textarea
-                      rows={5}
-                      required
-                      placeholder="<!DOCTYPE html><html>... Sayfa kaynak kodunu buraya yapıştırın"
-                      value={scrapeHtml}
-                      onChange={(e) => setScrapeHtml(e.target.value)}
-                      className="w-full rounded-2xl border border-slate-200 bg-slate-50 p-4 font-mono text-[11px] outline-none focus:border-orange-400 focus:bg-white"
-                    />
-
-                    <button
-                      type="submit"
-                      disabled={scraping}
-                      className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#f36b2b] px-6 py-3 text-xs font-black text-white shadow-md transition hover:bg-[#df5b20] disabled:opacity-50"
-                    >
-                      {scraping ? <LoaderCircle size={16} className="animate-spin" /> : <FileText size={16} />}
-                      HTML Kaynağından Ayrıştır ve Çek
-                    </button>
                   </div>
-                )}
 
-                {/* Fiyat Hesaplayıcı Ayarları */}
-                <div className="flex flex-wrap items-center gap-4 rounded-2xl bg-slate-50 p-4 border border-slate-100 text-xs">
-                  <span className="font-extrabold text-slate-700">Fiyat Hesaplama Motoru:</span>
-                  <div className="flex items-center gap-2">
-                    <label className="flex items-center gap-1 cursor-pointer font-bold text-slate-600">
-                      <input
-                        type="radio"
-                        checked={scraperMarkupType === "percent"}
-                        onChange={() => setScraperMarkupType("percent")}
-                        className="accent-[#f36b2b]"
-                      />
-                      % Kâr Ekle
-                    </label>
-                    <label className="flex items-center gap-1 cursor-pointer font-bold text-slate-600">
-                      <input
-                        type="radio"
-                        checked={scraperMarkupType === "amount"}
-                        onChange={() => setScraperMarkupType("amount")}
-                        className="accent-[#f36b2b]"
-                      />
-                      + TL Sabit Ekle
-                    </label>
+                  <div className="rounded-2xl bg-white p-4 border border-amber-200/80 shadow-sm space-y-3">
+                    <p className="text-xs font-black text-slate-800">📌 Nasıl Kurulur? (Sadece 1 Kere Yapılır):</p>
+                    <ol className="list-decimal pl-4 text-xs text-slate-600 space-y-1.5">
+                      <li>Klavyenizden <kbd className="rounded bg-slate-100 px-1.5 py-0.5 font-mono shadow-sm">Ctrl + Shift + B</kbd> tuşlarına basarak tarayıcınızın <strong>Yer İmleri Çubuğunu</strong> görünür yapın.</li>
+                      <li>Aşağıdaki turuncu butonu farenizle tutup tarayıcınızın Yer İmleri çubuğuna sürükleyip bırakın:</li>
+                    </ol>
+
+                    <div className="py-2 flex items-center gap-3">
+                      <a
+                        href={`javascript:(function(){try{var h=document.documentElement.outerHTML;var u=window.location.href;var w=window.open('${currentOrigin || ""}/admin?tab=scraper&auto=1','_blank');if(!w){alert('Pop-up penceresine izin verin.');return;}var a=0;var t=setInterval(function(){a++;w.postMessage({type:'MARKASI_BOOKMARKLET_IMPORT',html:h,url:u},'*');if(a>25)clearInterval(t);},400);window.addEventListener('message',function hdl(e){if(e.data==='MARKASI_BOOKMARKLET_OK'){clearInterval(t);window.removeEventListener('message',hdl);}});}catch(e){alert('Hata:'+e.message);}})();`}
+                        draggable
+                        onClick={(e) => {
+                          e.preventDefault();
+                          showToast("Bu butonu farenizle tutup tarayıcınızın Yer İmleri (Sık Kullanılanlar) çubuğuna sürükleyin!");
+                        }}
+                        className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-amber-500 to-[#f36b2b] px-6 py-3 text-xs font-black text-white shadow-md hover:scale-105 active:scale-95 transition cursor-grab"
+                      >
+                        <Zap size={15} /> ⚡ Markasi&apos;ya Aktar (Sürükleyin)
+                      </a>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const code = `javascript:(function(){try{var h=document.documentElement.outerHTML;var u=window.location.href;var w=window.open('${currentOrigin || ""}/admin?tab=scraper&auto=1','_blank');if(!w){alert('Pop-up penceresine izin verin.');return;}var a=0;var t=setInterval(function(){a++;w.postMessage({type:'MARKASI_BOOKMARKLET_IMPORT',html:h,url:u},'*');if(a>25)clearInterval(t);},400);window.addEventListener('message',function hdl(e){if(e.data==='MARKASI_BOOKMARKLET_OK'){clearInterval(t);window.removeEventListener('message',hdl);}});}catch(e){alert('Hata:'+e.message);}})();`;
+                          navigator.clipboard.writeText(code);
+                          showToast("Yer imi JavaScript kodu panoya kopyalandı!");
+                        }}
+                        className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 transition"
+                      >
+                        <Copy size={13} /> Kodu Kopyala
+                      </button>
+                    </div>
+
+                    <div className="rounded-xl bg-slate-50 p-3 text-xs text-slate-600 border border-slate-200/60">
+                      <p className="font-bold text-slate-800">🚀 Nasıl Kullanılır?:</p>
+                      <p className="mt-1 text-[11px] leading-relaxed">
+                        İstediğiniz sitede (<code className="font-mono text-orange-600">onlineyedekparca.com</code>, <code className="font-mono text-orange-600">yedekparca.com.tr</code> vb.) herhangi bir ürün sayfasındayken yer imlerinizdeki <strong>&quot;⚡ Markasi&apos;ya Aktar&quot;</strong> butonuna basın. Yeni bir sekmede Markasi admin paneliniz açılır ve Cloudflare engeline takılmadan ürünün tüm resimleri, fiyatı, OEM kodları ve özellikleri saniyesinde çekilir!
+                      </p>
+                    </div>
                   </div>
-                  <input
-                    type="number"
-                    value={scraperMarkupValue}
-                    onChange={(e) => setScraperMarkupValue(parseFloat(e.target.value) || 0)}
-                    className="w-20 rounded-xl border border-slate-200 bg-white px-2 py-1 text-center font-black outline-none"
-                  />
-                  <span className="text-slate-400">{scraperMarkupType === "percent" ? "% kâr marjı" : "TL net kâr"}</span>
                 </div>
-              </form>
+              ) : (
+                <form onSubmit={handleScrape} className="mt-4 space-y-4">
+                  {scrapeMode === "url" ? (
+                    <div className="flex flex-col gap-3 sm:flex-row">
+                      <input
+                        type="url"
+                        required
+                        placeholder="Örnek: https://www.yedekparca.com.tr/urun/volkswagen-golf-7-yag-filtresi-04e115561h"
+                        value={scrapeUrl}
+                        onChange={(e) => setScrapeUrl(e.target.value)}
+                        className="flex-1 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs outline-none focus:border-orange-400 focus:bg-white"
+                      />
+                      <button
+                        type="submit"
+                        disabled={scraping}
+                        className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#f36b2b] px-6 py-3 text-xs font-black text-white shadow-md transition hover:bg-[#df5b20] disabled:opacity-50"
+                      >
+                        {scraping ? <LoaderCircle size={16} className="animate-spin" /> : <Link2 size={16} />}
+                        Ürün Bilgilerini Çek
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="rounded-2xl border border-amber-200 bg-amber-50/80 p-3 text-xs text-amber-900">
+                        <p className="font-bold">💡 Cloudflare / Bot Korumalı Siteler İçin Kesin Çözüm:</p>
+                        <p className="mt-1 text-[11px] text-amber-800 leading-relaxed">
+                          1. Ürünün web sayfasını kendi tarayıcınızda açın.<br />
+                          2. Sayfada boş bir yere sağ tıklayıp <strong>&quot;Sayfa Kaynağını Görüntüle&quot;</strong> (veya <kbd className="rounded bg-white px-1 shadow">Ctrl + U</kbd>) deyin.<br />
+                          3. Açılan kodların tamamını (<kbd className="rounded bg-white px-1 shadow">Ctrl + A</kbd> ardından <kbd className="rounded bg-white px-1 shadow">Ctrl + C</kbd>) kopyalayın.<br />
+                          4. Aşağıdaki <strong>&quot;Panodan Otomatik Yapıştır&quot;</strong> butonuna basın.
+                        </p>
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-black text-slate-700">Sayfa Kaynak Kodu (HTML):</label>
+                        <button
+                          type="button"
+                          onClick={pasteFromClipboard}
+                          className="inline-flex items-center gap-1.5 rounded-xl bg-orange-100 px-3 py-1.5 text-xs font-bold text-orange-700 hover:bg-orange-200 transition"
+                        >
+                          <Copy size={13} /> 📋 Panodan Otomatik Yapıştır
+                        </button>
+                      </div>
+
+                      <input
+                        type="url"
+                        placeholder="Ürün Sayfası Linki (Görsel adreslerini tamamlamak için - Opsiyonel)"
+                        value={scrapeUrl}
+                        onChange={(e) => setScrapeUrl(e.target.value)}
+                        className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-xs outline-none focus:border-orange-400 focus:bg-white"
+                      />
+
+                      <textarea
+                        rows={5}
+                        required
+                        placeholder="<!DOCTYPE html><html>... Sayfa kaynak kodunu buraya yapıştırın"
+                        value={scrapeHtml}
+                        onChange={(e) => setScrapeHtml(e.target.value)}
+                        className="w-full rounded-2xl border border-slate-200 bg-slate-50 p-4 font-mono text-[11px] outline-none focus:border-orange-400 focus:bg-white"
+                      />
+
+                      <button
+                        type="submit"
+                        disabled={scraping}
+                        className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#f36b2b] px-6 py-3 text-xs font-black text-white shadow-md transition hover:bg-[#df5b20] disabled:opacity-50"
+                      >
+                        {scraping ? <LoaderCircle size={16} className="animate-spin" /> : <FileText size={16} />}
+                        HTML Kaynağından Ayrıştır ve Çek
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Fiyat Hesaplayıcı Ayarları */}
+                  <div className="flex flex-wrap items-center gap-4 rounded-2xl bg-slate-50 p-4 border border-slate-100 text-xs">
+                    <span className="font-extrabold text-slate-700">Fiyat Hesaplama Motoru:</span>
+                    <div className="flex items-center gap-2">
+                      <label className="flex items-center gap-1 cursor-pointer font-bold text-slate-600">
+                        <input
+                          type="radio"
+                          checked={scraperMarkupType === "percent"}
+                          onChange={() => setScraperMarkupType("percent")}
+                          className="accent-[#f36b2b]"
+                        />
+                        % Kâr Ekle
+                      </label>
+                      <label className="flex items-center gap-1 cursor-pointer font-bold text-slate-600">
+                        <input
+                          type="radio"
+                          checked={scraperMarkupType === "amount"}
+                          onChange={() => setScraperMarkupType("amount")}
+                          className="accent-[#f36b2b]"
+                        />
+                        + TL Sabit Ekle
+                      </label>
+                    </div>
+                    <input
+                      type="number"
+                      value={scraperMarkupValue}
+                      onChange={(e) => setScraperMarkupValue(parseFloat(e.target.value) || 0)}
+                      className="w-20 rounded-xl border border-slate-200 bg-white px-2 py-1 text-center font-black outline-none"
+                    />
+                    <span className="text-slate-400">{scraperMarkupType === "percent" ? "% kâr marjı" : "TL net kâr"}</span>
+                  </div>
+                </form>
+              )}
 
               {/* Scraped Result Preview */}
               {scrapedData && (
