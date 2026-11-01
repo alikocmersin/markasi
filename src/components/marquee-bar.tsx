@@ -47,6 +47,9 @@ export function MarqueeBar({
         }
         if (s.marquee_bg) setBg(s.marquee_bg);
         if (s.marquee_color) setColor(s.marquee_color);
+        try {
+          localStorage.setItem("markasi_site_settings", JSON.stringify(s));
+        } catch {}
       })
       .catch(() => {});
   }, []);

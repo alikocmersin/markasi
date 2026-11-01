@@ -596,8 +596,10 @@ export default function Home() {
       .then((data) => {
         if (!data) return;
         const serverSettings = data.settings || {};
-        const merged = localSaved ? { ...serverSettings, ...localSaved } : serverSettings;
-        setCmsSettings(merged);
+        setCmsSettings(serverSettings);
+        try {
+          localStorage.setItem("markasi_site_settings", JSON.stringify(serverSettings));
+        } catch {}
         if (data.sliders) setCmsSliders(data.sliders);
         if (data.pages) setCmsPages(data.pages);
       })

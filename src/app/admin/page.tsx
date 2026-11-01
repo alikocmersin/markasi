@@ -1610,25 +1610,14 @@ async function compressImageFile(file: File, maxWidth = 1000, maxHeight = 1000, 
       if (res.ok) {
         const data = await res.json();
         const serverSettings = data.settings || {};
-        // Merge server settings with local saved settings
-        const mergedSettings = localSaved ? { ...serverSettings, ...localSaved } : serverSettings;
-        setSiteSettings(mergedSettings);
+        setSiteSettings(serverSettings);
+        try {
+          localStorage.setItem("markasi_site_settings", JSON.stringify(serverSettings));
+        } catch {}
         setSliders(data.sliders || []);
         setCmsPages(data.pages || []);
         if (!selectedCmsPage && data.pages?.length > 0) {
           setSelectedCmsPage(data.pages[0]);
-        }
-        // If local settings had custom edits (e.g. tax_office, phone, marquee) that server lacks, re-sync to server
-        if (
-          localSaved &&
-          ((localSaved.tax_office && localSaved.tax_office !== serverSettings.tax_office) ||
-           (localSaved.marquee_text && localSaved.marquee_text !== serverSettings.marquee_text))
-        ) {
-          fetch("/api/admin/cms", {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ section: "settings", settings: mergedSettings }),
-          }).catch(() => {});
         }
       }
     } catch (e) {

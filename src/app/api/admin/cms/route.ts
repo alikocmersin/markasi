@@ -12,12 +12,13 @@ import {
   setSiteSetting,
 } from "@/lib/db";
 import { readJsonObject } from "@/lib/request";
-import { syncCloudDatabase } from "@/lib/cloud-sync";
+import { ensureCloudDatabaseSynced, syncCloudDatabase } from "@/lib/cloud-sync";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export async function GET(request: Request) {
+  await ensureCloudDatabaseSynced();
   const { searchParams } = new URL(request.url);
   const slug = searchParams.get("page");
 
@@ -69,7 +70,7 @@ export async function PATCH(request: Request) {
       }
     }
     recordAuditLog(admin.email, "UPDATE_SITE_SETTINGS", "CMS", "GENERAL", "Site ayarları güncellendi.");
-    void syncCloudDatabase().catch(() => {});
+    await syncCloudDatabase(["site_settings"]);
     return NextResponse.json({ success: true });
   }
 
@@ -83,7 +84,7 @@ export async function PATCH(request: Request) {
       seoDescription: body.seoDescription ? String(body.seoDescription).trim() : undefined,
     });
     recordAuditLog(admin.email, "UPDATE_CMS_PAGE", "CMS", String(body.slug), `${body.title} sayfası güncellendi.`);
-    void syncCloudDatabase().catch(() => {});
+    await syncCloudDatabase(["cms_pages"]);
     return NextResponse.json({ success: true });
   }
 
@@ -124,14 +125,14 @@ export async function PATCH(request: Request) {
       .run({ id, title, subtitle, imageDesktop, imageMobile, linkUrl, buttonText, position, sortOrder, active });
 
     recordAuditLog(admin.email, "UPSERT_SLIDER", "CMS", id, `Banner/Slider güncellendi: ${title}`);
-    void syncCloudDatabase().catch(() => {});
+    await syncCloudDatabase(["sliders_banners"]);
     return NextResponse.json({ success: true, id });
   }
 
   // Section 4: Delete Slider
   if (section === "delete-slider" && body.id) {
     getDatabase().prepare("DELETE FROM sliders_banners WHERE id = ?").run(String(body.id));
-    void syncCloudDatabase().catch(() => {});
+    await syncCloudDatabase(["sliders_banners"]);
     return NextResponse.json({ success: true });
   }
 
