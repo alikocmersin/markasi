@@ -514,3 +514,4 @@ export async function ensureMysqlSynced(): Promise<void> {
     console.warn("[MySQL] Initial sync failed, continuing with local SQLite:", err);
   }
 }
+
