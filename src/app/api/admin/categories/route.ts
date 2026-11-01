@@ -10,13 +10,18 @@ import {
   upsertCategory,
 } from "@/lib/db";
 import { readJsonObject } from "@/lib/request";
-import { syncCloudDatabase } from "@/lib/cloud-sync";
+import { ensureCloudDatabaseSynced, syncCloudDatabase } from "@/lib/cloud-sync";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export async function GET(request: Request) {
   const admin = await getAdmin();
   if (!admin) {
     return NextResponse.json({ error: "Yönetici girişi gerekli." }, { status: 401 });
   }
+
+  await ensureCloudDatabaseSynced();
 
   const { searchParams } = new URL(request.url);
   const isVehicleTree = searchParams.get("vehicleTree") === "1";
@@ -26,7 +31,10 @@ export async function GET(request: Request) {
     isVehicleTree: searchParams.has("vehicleTree") ? isVehicleTree : undefined,
   });
 
-  return NextResponse.json({ categories });
+  return NextResponse.json(
+    { categories },
+    { headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } }
+  );
 }
 
 export async function POST(request: Request) {
@@ -74,7 +82,7 @@ export async function POST(request: Request) {
       `${name} kategorisi/düğümü güncellendi.`,
     );
 
-    await syncCloudDatabase().catch((err) => console.warn("[Cloud Sync Warning]", err));
+    await syncCloudDatabase(["categories"]).catch((err) => console.warn("[Cloud Sync Warning]", err));
 
     return NextResponse.json({ success: true, id: res.id });
   }
@@ -89,7 +97,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Bu kategori adı zaten kullanılıyor." }, { status: 409 });
     }
     recordAuditLog(admin.email, "CREATE_CATEGORY", "Category", name, `${name} kategorisi eklendi.`);
-    await syncCloudDatabase().catch((err) => console.warn("[Cloud Sync Warning]", err));
+    await syncCloudDatabase(["categories"]).catch((err) => console.warn("[Cloud Sync Warning]", err));
     return NextResponse.json({ success: true }, { status: 201 });
   }
 
@@ -103,7 +111,7 @@ export async function POST(request: Request) {
     if (result === "missing") return NextResponse.json({ error: "Kategori bulunamadı." }, { status: 404 });
     if (result === "duplicate") return NextResponse.json({ error: "Bu isimde bir kategori zaten mevcut." }, { status: 409 });
     recordAuditLog(admin.email, "RENAME_CATEGORY", "Category", currentName, `${currentName} -> ${nextName} olarak değiştirildi.`);
-    await syncCloudDatabase().catch((err) => console.warn("[Cloud Sync Warning]", err));
+    await syncCloudDatabase(["categories", "products"]).catch((err) => console.warn("[Cloud Sync Warning]", err));
     return NextResponse.json({ success: true });
   }
 
@@ -112,7 +120,7 @@ export async function POST(request: Request) {
     const visible = Boolean(body.visible);
     setCategoryVisibility(name, visible);
     recordAuditLog(admin.email, "VISIBILITY_CATEGORY", "Category", name, `Görünürlük: ${visible}`);
-    await syncCloudDatabase().catch((err) => console.warn("[Cloud Sync Warning]", err));
+    await syncCloudDatabase(["categories"]).catch((err) => console.warn("[Cloud Sync Warning]", err));
     return NextResponse.json({ success: true });
   }
 
@@ -157,7 +165,7 @@ export async function DELETE(request: Request) {
     reassignToId ? `Silindi, ürünler ${reassignToId} kategorisine aktarıldı.` : "Silindi.",
   );
 
-  await syncCloudDatabase().catch((err) => console.warn("[Cloud Sync Warning]", err));
+  await syncCloudDatabase(["categories", "products"]).catch((err) => console.warn("[Cloud Sync Warning]", err));
 
   return NextResponse.json({ success: true });
 }

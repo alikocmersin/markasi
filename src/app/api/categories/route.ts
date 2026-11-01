@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
 import { listCategoryTree, slugify } from "@/lib/db";
+import { ensureCloudDatabaseSynced } from "@/lib/cloud-sync";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 function sanitizeCategoryUrl(url?: string | null): string {
   if (!url || typeof url !== "string") return "";
@@ -27,22 +31,31 @@ const fallbackSvgMap: Record<string, string> = {
 };
 
 export async function GET() {
+  await ensureCloudDatabaseSynced();
+
   const categories = listCategoryTree({ includeHidden: false, isVehicleTree: false });
-  return NextResponse.json({
-    categories: categories.map((c) => {
-      const slug = c.slug || slugify(c.name);
-      const icon = sanitizeCategoryUrl(c.icon);
-      const banner = sanitizeCategoryUrl(c.banner);
-      const fallback = fallbackSvgMap[slug] || `/categories/fren-sistemi.svg`;
-      return {
-        id: c.id,
-        name: c.name,
-        slug,
-        icon,
-        banner,
-        image: icon || banner || fallback,
-        description: c.seoDescription || `${c.name} yedek parçaları`,
-      };
-    }),
-  });
+  return NextResponse.json(
+    {
+      categories: categories.map((c) => {
+        const slug = c.slug || slugify(c.name);
+        const icon = sanitizeCategoryUrl(c.icon);
+        const banner = sanitizeCategoryUrl(c.banner);
+        const fallback = fallbackSvgMap[slug] || `/categories/fren-sistemi.svg`;
+        return {
+          id: c.id,
+          name: c.name,
+          slug,
+          icon,
+          banner,
+          image: icon || banner || fallback,
+          description: c.seoDescription || `${c.name} yedek parçaları`,
+        };
+      }),
+    },
+    {
+      headers: {
+        "Cache-Control": "no-store, no-cache, must-revalidate",
+      },
+    }
+  );
 }

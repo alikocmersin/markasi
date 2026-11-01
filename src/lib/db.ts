@@ -1071,14 +1071,17 @@ function openDatabase() {
   });
   seed();
 
-  // Populate Categories & Default Tree
-  database
-    .prepare(
-      `INSERT OR IGNORE INTO categories (name, id, slug)
-       SELECT DISTINCT category, lower(replace(category, ' ', '-')), lower(replace(category, ' ', '-'))
-       FROM products WHERE trim(category) <> ''`,
-    )
-    .run();
+  // Populate Categories from Products only if categories table has 0 part categories
+  const partCatCount = database.prepare("SELECT count(*) as c FROM categories WHERE is_vehicle_tree = 0").get() as { c: number };
+  if (partCatCount.c === 0) {
+    database
+      .prepare(
+        `INSERT OR IGNORE INTO categories (name, id, slug)
+         SELECT DISTINCT category, lower(replace(category, ' ', '-')), lower(replace(category, ' ', '-'))
+         FROM products WHERE trim(category) <> ''`,
+      )
+      .run();
+  }
 
   // Seed Currency Rates
   database
@@ -1250,9 +1253,9 @@ function openDatabase() {
     .prepare("INSERT OR IGNORE INTO app_settings (key, value) VALUES (?, ?)")
     .run("development_session_secret", randomBytes(32).toString("base64url"));
 
-  // Seed Vehicle Tree from complete catalog if empty or incomplete
-  const vtCount = database.prepare("SELECT count(*) as c FROM categories WHERE is_vehicle_tree = 1").get() as { c: number };
-  if (vtCount.c < 1200) {
+  // Seed Vehicle Tree from complete catalog ONLY ONCE (persisted in app_settings)
+  const vtSeeded = database.prepare("SELECT value FROM app_settings WHERE key = 'vehicle_tree_seeded'").get() as { value: string } | undefined;
+  if (!vtSeeded || vtSeeded.value !== "1") {
     const insert = database.prepare(`
       INSERT OR REPLACE INTO categories (id, name, slug, parent_id, sort_order, default_margin, is_vehicle_tree, active)
       VALUES (?, ?, ?, ?, ?, 20.0, 1, 1)
@@ -1269,6 +1272,7 @@ function openDatabase() {
         insert.run(modelId, model.label, `${brandSlug}-${modelSlug}`, brandId, childOrder++);
       }
     }
+    database.prepare("INSERT OR REPLACE INTO app_settings (key, value) VALUES ('vehicle_tree_seeded', '1')").run();
   }
 
   return database;
@@ -1528,10 +1532,29 @@ export function deleteCategory(idOrName: string, reassignToIdOrName?: string) {
         database.prepare("DELETE FROM categories WHERE parent_id = ?").run(cat.id);
       } else {
         database.prepare("UPDATE categories SET parent_id = NULL WHERE parent_id = ?").run(cat.id);
+        database.prepare("UPDATE products SET category = 'Genel' WHERE category = ? COLLATE NOCASE").run(cat.name);
       }
     }
 
     database.prepare("DELETE FROM categories WHERE id = ?").run(cat.id);
+
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { pushToCloudDatabase } = require("./cloud-sync");
+      pushToCloudDatabase(
+        "DELETE FROM `categories` WHERE `id` = ?",
+        "DELETE FROM categories WHERE id = ?",
+        [cat.id]
+      );
+      if (cat.is_vehicle_tree === 1) {
+        pushToCloudDatabase(
+          "DELETE FROM `categories` WHERE `parent_id` = ?",
+          "DELETE FROM categories WHERE parent_id = ?",
+          [cat.id]
+        );
+      }
+    } catch {}
+
     return true;
   }).immediate();
 }

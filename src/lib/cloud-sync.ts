@@ -13,13 +13,11 @@ export async function syncCloudDatabase(tables?: string[]): Promise<void> {
 
   if (mysqlConfig.isConfigured) {
     promises.push(
-      syncAllToMysql().catch((err) =>
+      syncAllToMysql(undefined, tables).catch((err) =>
         console.warn("[CloudSync MySQL Error]", err?.message || err)
       )
     );
-  }
-
-  if (tursoConfig.isConfigured) {
+  } else if (tursoConfig.isConfigured) {
     promises.push(
       syncAllToTurso().catch((err) =>
         console.warn("[CloudSync Turso Error]", err?.message || err)
@@ -58,26 +56,18 @@ export function pushToCloudDatabase(
  * With a fast timeout so it never blocks page rendering.
  */
 export async function ensureCloudDatabaseSynced(): Promise<void> {
-  const promises: Promise<any>[] = [];
+  const mysqlConfig = getMysqlConfig();
+  if (mysqlConfig.isConfigured) {
+    // MySQL (TiDB Cloud) is the primary single source of truth
+    const timeoutPromise = new Promise((resolve) => setTimeout(resolve, 3500));
+    await Promise.race([ensureMysqlSynced(), timeoutPromise]);
+    return;
+  }
 
-  try {
-    const mysqlConfig = getMysqlConfig();
-    if (mysqlConfig.isConfigured) {
-      promises.push(ensureMysqlSynced());
-    }
-  } catch {}
-
-  try {
-    const tursoConfig = getTursoConfig();
-    if (tursoConfig.isConfigured) {
-      promises.push(ensureTursoSynced());
-    }
-  } catch {}
-
-  if (promises.length === 0) return;
-
-  // Enforce 3.5s timeout so SSR page response is never delayed
-  const timeoutPromise = new Promise((resolve) => setTimeout(resolve, 3500));
-  await Promise.race([Promise.all(promises), timeoutPromise]);
+  const tursoConfig = getTursoConfig();
+  if (tursoConfig.isConfigured) {
+    const timeoutPromise = new Promise((resolve) => setTimeout(resolve, 3500));
+    await Promise.race([ensureTursoSynced(), timeoutPromise]);
+  }
 }
 

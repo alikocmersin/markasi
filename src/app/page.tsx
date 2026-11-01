@@ -511,7 +511,7 @@ export default function Home() {
         if (stored) localMap = JSON.parse(stored) || {};
       } catch {}
 
-      fetch("/api/categories")
+      fetch("/api/categories", { cache: "no-store" })
         .then((r) => r.json())
         .then((d) => {
           const map: Record<string, string> = {};
@@ -522,7 +522,7 @@ export default function Home() {
             if (c.slug) map[c.slug] = chosen;
           }
           setCategoryImages(map);
-          if (Array.isArray(d.categories) && d.categories.length > 0) {
+          if (Array.isArray(d.categories)) {
             setDynamicCategories(
               d.categories.map((c: any) => ({
                 ...c,
