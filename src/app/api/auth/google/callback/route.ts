@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { completeGoogleOAuth } from "@/lib/member-auth";
+import { syncCloudDatabase } from "@/lib/cloud-sync";
 
 export const dynamic = "force-dynamic";
 
@@ -7,6 +8,7 @@ export async function GET(request: Request) {
   const destination = new URL("/account", request.url);
   try {
     await completeGoogleOAuth(request.url);
+    void syncCloudDatabase(["members"]).catch(() => {});
     destination.searchParams.set("notice", "google_login_success");
     return NextResponse.redirect(destination);
   } catch (error) {

@@ -352,6 +352,7 @@ export async function PATCH(request: Request) {
 
     if (updated) {
       recordAuditLog(admin.email, "FULL_UPDATE_PRODUCT", "Product", productId, `Ürün tam güncellendi: ${body.name || productId}`);
+      void syncCloudDatabase().catch((err) => console.warn("[Cloud Background Sync Warning]", err));
       return NextResponse.json({ success: true });
     }
     return NextResponse.json({ error: "Ürün güncellenemedi." }, { status: 400 });
@@ -436,9 +437,15 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: "Silinecek ürün ID'si gerekli." }, { status: 400 });
   }
 
-  const res = getDatabase().prepare("DELETE FROM products WHERE id = ?").run(id);
+  const db = getDatabase();
+  const deleteTx = db.transaction(() => {
+    db.prepare("DELETE FROM product_images WHERE product_id = ?").run(id);
+    db.prepare("DELETE FROM supplier_stock WHERE product_id = ?").run(id);
+    return db.prepare("DELETE FROM products WHERE id = ?").run(id);
+  });
+  const res = deleteTx.immediate();
   if (res.changes > 0) {
-    recordAuditLog(admin.email, "DELETE_PRODUCT", "Product", id, `Ürün silindi.`);
+    recordAuditLog(admin.email, "DELETE_PRODUCT", "Product", id, `Ürün ve ilişkili görseller/stoklar silindi.`);
     void syncCloudDatabase().catch((err) => console.warn("[Cloud Background Sync Warning]", err));
     return NextResponse.json({ success: true });
   }

@@ -599,8 +599,8 @@ export async function ensureMysqlSynced(): Promise<void> {
   if (!config.isConfigured) return;
 
   try {
-    globalThis.markasiMysqlSynced = true;
     await pullAllFromMysql(config);
+    globalThis.markasiMysqlSynced = true;
     console.log("[MySQL] Initial sync from MySQL completed successfully.");
   } catch (err) {
     console.warn("[MySQL] Initial sync failed, continuing with local SQLite:", err);

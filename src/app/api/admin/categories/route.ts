@@ -89,6 +89,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Bu kategori adı zaten kullanılıyor." }, { status: 409 });
     }
     recordAuditLog(admin.email, "CREATE_CATEGORY", "Category", name, `${name} kategorisi eklendi.`);
+    void syncCloudDatabase().catch((err) => console.warn("[Cloud Sync Warning]", err));
     return NextResponse.json({ success: true }, { status: 201 });
   }
 
@@ -102,6 +103,7 @@ export async function POST(request: Request) {
     if (result === "missing") return NextResponse.json({ error: "Kategori bulunamadı." }, { status: 404 });
     if (result === "duplicate") return NextResponse.json({ error: "Bu isimde bir kategori zaten mevcut." }, { status: 409 });
     recordAuditLog(admin.email, "RENAME_CATEGORY", "Category", currentName, `${currentName} -> ${nextName} olarak değiştirildi.`);
+    void syncCloudDatabase().catch((err) => console.warn("[Cloud Sync Warning]", err));
     return NextResponse.json({ success: true });
   }
 
@@ -110,6 +112,7 @@ export async function POST(request: Request) {
     const visible = Boolean(body.visible);
     setCategoryVisibility(name, visible);
     recordAuditLog(admin.email, "VISIBILITY_CATEGORY", "Category", name, `Görünürlük: ${visible}`);
+    void syncCloudDatabase().catch((err) => console.warn("[Cloud Sync Warning]", err));
     return NextResponse.json({ success: true });
   }
 

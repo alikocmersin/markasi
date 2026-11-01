@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAdmin, isSameOrigin } from "@/lib/auth";
+import { syncCloudDatabase } from "@/lib/cloud-sync";
 import {
   createReturnRequest,
   createSupplierRecourse,
@@ -43,6 +44,7 @@ export async function PATCH(request: Request) {
 
   updateReturnStatus(returnId, status, refundAmount);
   recordAuditLog(admin.email, "UPDATE_RMA_STATUS", "Return", returnId, `İade durumu: ${status}`);
+  await syncCloudDatabase(["returns"]);
 
   return NextResponse.json({ success: true });
 }
@@ -76,6 +78,7 @@ export async function POST(request: Request) {
     });
 
     recordAuditLog(admin.email, "CREATE_SUPPLIER_RECOURSE", "Recourse", id, `${body.supplier} firmasına rücu/garanti kaydı açıldı.`);
+    await syncCloudDatabase(["supplier_recourses"]);
     return NextResponse.json({ success: true, id }, { status: 201 });
   }
 
@@ -101,6 +104,7 @@ export async function POST(request: Request) {
   });
 
   recordAuditLog(admin.email, "CREATE_RMA_RETURN", "Return", id, `${orderId} için iade talebi oluşturuldu.`);
+  await syncCloudDatabase(["returns"]);
   return NextResponse.json({ success: true, id }, { status: 201 });
 }
 

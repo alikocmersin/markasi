@@ -7,8 +7,18 @@ export async function GET(request: Request) {
   const xmlItems = products.map((p) => {
     const link = `${origin}/#${p.id}`;
     const priceFormatted = (p.price / 100).toFixed(2);
-    const inStock = p.centralStock > 0 ? "in_stock" : "out_of_stock";
-    const image = p.images && p.images.length > 0 ? p.images[0] : `${origin}/markasi-icon.svg`;
+    const supplierTotal = Array.isArray(p.xmlStock)
+      ? p.xmlStock.reduce((sum, s) => sum + (s.quantity || 0), 0)
+      : 0;
+    const totalStock = (p.centralStock || 0) + supplierTotal;
+    const inStock = totalStock > 0 ? "in_stock" : "out_of_stock";
+
+    let image = p.images && p.images.length > 0 ? p.images[0] : `${origin}/markasi-icon.svg`;
+    if (image.startsWith("/")) {
+      image = `${origin}${image}`;
+    } else if (image.startsWith("data:")) {
+      image = `${origin}/markasi-icon.svg`;
+    }
 
     return `
     <item>

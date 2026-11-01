@@ -77,6 +77,9 @@ export async function POST(request: Request) {
   const phone = text(body.phone, 30);
   const address = text(body.address, 500);
   const paymentMethod = text(body.paymentMethod, 40);
+  const vinNumber = text(body.vinNumber || body.vin, 100);
+  const licensePlatePhoto = typeof body.licensePlatePhoto === "string" ? body.licensePlatePhoto : "";
+  const customerNotes = text(body.customerNotes || body.notes, 1000);
   const allowedPaymentMethods = [
     "Kapıda ödeme",
     "Havale / EFT",
@@ -222,10 +225,22 @@ export async function POST(request: Request) {
     database
       .prepare(
         `INSERT INTO orders
-          (id, customer_name, email, phone, address, payment_method, total, member_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          (id, customer_name, email, phone, address, payment_method, total, member_id, vin_number, license_plate_photo, customer_notes)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
-      .run(orderId, customerName, email, phone, address, paymentMethod, total, memberId || null);
+      .run(
+        orderId,
+        customerName,
+        email,
+        phone,
+        address,
+        paymentMethod,
+        total,
+        memberId || null,
+        vinNumber,
+        licensePlatePhoto,
+        customerNotes,
+      );
 
     const addItem = database.prepare(
       `INSERT INTO order_items (order_id, product_id, product_name, code, quantity, unit_price)
@@ -243,16 +258,27 @@ export async function POST(request: Request) {
           .run(fromCentral, item.product.id, fromCentral);
       }
 
-      // Deduct remaining from supplier stock if needed
-      const fromSupplier = item.quantity - fromCentral;
-      if (fromSupplier > 0) {
-        database
+      // Deduct remaining from supplier stock safely across suppliers
+      let neededFromSupplier = item.quantity - fromCentral;
+      if (neededFromSupplier > 0) {
+        const supplierRows = database
           .prepare(
-            `UPDATE supplier_stock
-             SET quantity = MAX(0, quantity - ?)
-             WHERE product_id = ? AND quantity > 0`,
+            `SELECT supplier, quantity FROM supplier_stock
+             WHERE product_id = ? AND quantity > 0
+             ORDER BY quantity DESC`,
           )
-          .run(fromSupplier, item.product.id);
+          .all(item.product.id) as Array<{ supplier: string; quantity: number }>;
+
+        for (const sup of supplierRows) {
+          if (neededFromSupplier <= 0) break;
+          const deduct = Math.min(sup.quantity, neededFromSupplier);
+          database
+            .prepare(
+              "UPDATE supplier_stock SET quantity = quantity - ? WHERE product_id = ? AND supplier = ?",
+            )
+            .run(deduct, item.product.id, sup.supplier);
+          neededFromSupplier -= deduct;
+        }
       }
 
       addItem.run(

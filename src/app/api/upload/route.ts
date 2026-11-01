@@ -49,6 +49,14 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "Resim boyutu en fazla 10MB olabilir." }, { status: 400 });
       }
 
+      // Security: Sanitize SVG against embedded scripts
+      if (mime.includes("svg")) {
+        const textContent = buffer.toString("utf-8");
+        if (/<script|onload|onerror|javascript:/i.test(textContent)) {
+          return NextResponse.json({ error: "Güvenlik uyarısı: SVG içinde zararlı komut tespit edildi." }, { status: 400 });
+        }
+      }
+
       let ext = extname(file.name).toLowerCase();
       if (!ext || ext.length > 5) {
         ext = mime.includes("png") ? ".png" : mime.includes("webp") ? ".webp" : mime.includes("svg") ? ".svg" : ".jpg";

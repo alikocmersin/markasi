@@ -343,8 +343,8 @@ export async function ensureTursoSynced(): Promise<void> {
   if (!config.isConfigured) return;
 
   try {
-    globalThis.markasiTursoSynced = true;
     await pullAllFromTurso(config.url, config.authToken);
+    globalThis.markasiTursoSynced = true;
     console.log("[Turso] Initial sync from cloud completed successfully.");
   } catch (err) {
     console.warn("[Turso] Initial sync failed, continuing with local SQLite:", err);

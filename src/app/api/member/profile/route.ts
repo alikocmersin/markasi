@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getDatabase } from "@/lib/db";
 import { isSameOrigin } from "@/lib/auth";
+import { syncCloudDatabase } from "@/lib/cloud-sync";
 import {
   encryptMemberIdentity,
   getMemberId,
@@ -104,5 +105,6 @@ export async function PATCH(request: Request) {
       postalCode,
       memberId,
     );
+  void syncCloudDatabase(["members"]).catch(() => {});
   return NextResponse.json({ success: true });
 }

@@ -374,51 +374,41 @@ export async function GET(request: Request) {
     );
   }
 
-  // 2. FAST LOCAL CATALOG FIRST (0.1ms, zero latency, zero timeouts)
-  const localOptions = getLocalCatalogOptions(sequence, selectedValues);
-  if (localOptions.length > 0) {
-    return NextResponse.json(
-      {
-        sequence,
-        label: stepLabels[sequence - 1],
-        options: localOptions,
-        source: "local-catalog",
-      },
-      {
-        headers: {
-          "Cache-Control": "public, max-age=86400, stale-while-revalidate=604800",
-        },
-      },
-    );
-  }
-
-  // 3. REMOTE FALLBACK ONLY IF UNKNOWN BRAND IN LOCAL CATALOG
+  // 1. Try Live Yedekparca Catalog First (with 30-day DB caching)
   try {
     const options = await getOptions(sequence, selectedValues);
-    return NextResponse.json(
-      {
-        sequence,
-        label: stepLabels[sequence - 1],
-        options,
-        source: "remote-service",
-      },
-      {
-        headers: {
-          "Cache-Control": "public, max-age=86400, stale-while-revalidate=604800",
+    if (options && options.length > 0) {
+      return NextResponse.json(
+        {
+          sequence,
+          label: stepLabels[sequence - 1],
+          options,
+          source: "live-catalog",
         },
-      },
-    );
-  } catch {
-    return NextResponse.json(
-      {
-        sequence,
-        label: stepLabels[sequence - 1],
-        options: [],
-        source: "empty",
-      },
-      {
-        headers: { "Cache-Control": "no-store" },
-      },
-    );
+        {
+          headers: {
+            "Cache-Control": "public, max-age=86400, stale-while-revalidate=604800",
+          },
+        },
+      );
+    }
+  } catch (err) {
+    console.warn("[Vehicle Catalog Warning] Live fetch failed, using fallback:", err);
   }
+
+  // 2. Seamless Local Fallback if live source fails or is empty
+  const localOptions = getLocalCatalogOptions(sequence, selectedValues);
+  return NextResponse.json(
+    {
+      sequence,
+      label: stepLabels[sequence - 1],
+      options: localOptions,
+      source: "local-fallback",
+    },
+    {
+      headers: {
+        "Cache-Control": "public, max-age=86400, stale-while-revalidate=604800",
+      },
+    },
+  );
 }

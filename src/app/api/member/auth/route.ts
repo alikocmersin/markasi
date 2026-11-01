@@ -10,6 +10,7 @@ import {
 import { getDatabase } from "@/lib/db";
 import { readJsonObject } from "@/lib/request";
 import { createMemberSession } from "@/lib/member-auth";
+import { syncCloudDatabase } from "@/lib/cloud-sync";
 
 const attempts = new Map<string, { count: number; resetAt: number }>();
 const attemptLimit = 5;
@@ -142,6 +143,7 @@ export async function POST(request: Request) {
       throw error;
     }
     await createMemberSession(memberId);
+    void syncCloudDatabase(["members"]).catch(() => {});
     return NextResponse.json({ success: true });
   }
 

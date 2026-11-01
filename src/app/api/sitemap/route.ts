@@ -21,7 +21,7 @@ export async function GET(request: Request) {
     .map(
       (url) => `
     <url>
-      <loc>${url}</loc>
+      <loc>${url.replace(/&/g, "&amp;")}</loc>
       <lastmod>${new Date().toISOString().split("T")[0]}</lastmod>
       <changefreq>daily</changefreq>
       <priority>0.8</priority>

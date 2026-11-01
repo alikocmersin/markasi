@@ -65,6 +65,7 @@ export async function POST(request: Request) {
     const payUrl = `${new URL(request.url).origin}/odeme/${payLinkId}`;
 
     recordAuditLog(admin.email, "CREATE_PAYLINK", "PayLink", payLinkId, `${customerName} için ${(amount / 100).toFixed(2)} TL ödeme linki üretildi.`);
+    await syncCloudDatabase(["pay_links"]);
     return NextResponse.json({
       success: true,
       payLinkId,

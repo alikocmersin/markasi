@@ -66,6 +66,7 @@ export async function PATCH(request: Request) {
     updateOrderVin(id, vinStatus, adminNotes);
     recordAuditLog(admin.email, "UPDATE_ORDER_VIN", "Order", id, `Şasi durumu: ${vinStatus}. Not: ${adminNotes}`);
     if (!body.cargoCompany && !body.trackingCode && !body.status) {
+      void syncCloudDatabase().catch(() => {});
       return NextResponse.json({ success: true });
     }
   }
@@ -78,6 +79,7 @@ export async function PATCH(request: Request) {
     updateOrderShipping(id, courierCompany, trackingCode, shippingStatus);
     recordAuditLog(admin.email, "UPDATE_ORDER_SHIPPING", "Order", id, `Kargo: ${courierCompany}, Takip: ${trackingCode}`);
     if (!body.status) {
+      void syncCloudDatabase().catch(() => {});
       return NextResponse.json({ success: true });
     }
   }

@@ -57,6 +57,9 @@ type Part = {
   kind: "OEM" | "Eşdeğer";
   category: string;
   price: number;
+  discountPrice?: number;
+  currency?: string;
+  vatRate?: number;
   image?: string | null;
   images?: string[];
   description?: string;
