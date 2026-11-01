@@ -82,6 +82,30 @@ function validateScraperUrl(targetUrl: string): URL {
   return urlObj;
 }
 
+function convertToStealthProxy(rawUrl: string): string {
+  try {
+    const u = new URL(rawUrl);
+    const hostSlug = u.hostname.replace(/\./g, "-");
+    const searchParams = u.search ? `${u.search}&` : "?";
+    return `https://${hostSlug}.translate.goog${u.pathname}${searchParams}_x_tr_sl=auto&_x_tr_tl=tr&_x_tr_hl=tr`;
+  } catch {
+    return rawUrl;
+  }
+}
+
+function cleanProxiedUrl(rawUrl: string, originalOrigin: string): string {
+  if (!rawUrl) return "";
+  let clean = rawUrl.trim();
+  if (clean.includes(".translate.goog")) {
+    try {
+      const u = new URL(clean);
+      const originalHost = u.hostname.replace(".translate.goog", "").replace(/-/g, ".");
+      clean = `${u.protocol}//${originalHost}${u.pathname}${u.search ? u.search.replace(/_x_tr_[^&]*&?/g, "").replace(/\?$/, "") : ""}`;
+    } catch {}
+  }
+  return clean;
+}
+
 async function fetchTargetHtml(urlObj: URL, timeoutMs = 15000): Promise<string> {
   const browserHeaders: Record<string, string> = {
     "User-Agent":
@@ -100,49 +124,57 @@ async function fetchTargetHtml(urlObj: URL, timeoutMs = 15000): Promise<string> 
     "Upgrade-Insecure-Requests": "1",
   };
 
+  // 1. First Attempt: Direct Fetch (Quick 4s timeout)
   try {
     const res = await fetch(urlObj.toString(), {
       headers: browserHeaders,
-      signal: AbortSignal.timeout(timeoutMs),
+      signal: AbortSignal.timeout(Math.min(timeoutMs, 4000)),
     });
 
     if (res.ok) {
       return await res.text();
     }
-
-    // If 403 or 503 (Cloudflare WAF / Bot challenge), try fallback with mobile Safari User-Agent
-    if (res.status === 403 || res.status === 503) {
-      const fallbackHeaders: Record<string, string> = {
-        "User-Agent":
-          "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "tr-TR,tr;q=0.9",
-        "Sec-Fetch-Dest": "document",
-        "Sec-Fetch-Mode": "navigate",
-        "Sec-Fetch-Site": "none",
-      };
-
-      const fallbackRes = await fetch(urlObj.toString(), {
-        headers: fallbackHeaders,
-        signal: AbortSignal.timeout(timeoutMs),
-      });
-
-      if (fallbackRes.ok) {
-        return await fallbackRes.text();
-      }
-
-      throw new Error(
-        `Hedef site (${urlObj.hostname}) bot koruması (Cloudflare/WAF) nedeniyle erişimi reddetti (${fallbackRes.status}). Lütfen adresi kontrol edin veya ürünü manuel ekleyin.`
-      );
-    }
-
-    throw new Error(`Hedef siteye bağlanılamadı (${res.status}).`);
-  } catch (err: any) {
-    if (err.name === "TimeoutError" || err.message?.includes("timeout")) {
-      throw new Error(`Hedef siteye (${urlObj.hostname}) bağlanırken zaman aşımı oluştu. Lütfen bağlantıyı kontrol edin.`);
-    }
-    throw err;
+  } catch {
+    // Proceed to stealth proxy
   }
+
+  // 2. Second Attempt: Transparent Google Stealth Bypass (Bypasses Cloudflare WAF & Bot Fight Mode transparently!)
+  try {
+    const proxyUrl = convertToStealthProxy(urlObj.toString());
+    const stealthRes = await fetch(proxyUrl, {
+      headers: browserHeaders,
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+
+    if (stealthRes.ok) {
+      return await stealthRes.text();
+    }
+  } catch {
+    // Proceed to mobile crawler
+  }
+
+  // 3. Third Attempt: Mobile Safari Crawler
+  try {
+    const fallbackHeaders: Record<string, string> = {
+      "User-Agent":
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1",
+      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      "Accept-Language": "tr-TR,tr;q=0.9",
+    };
+
+    const fallbackRes = await fetch(urlObj.toString(), {
+      headers: fallbackHeaders,
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+
+    if (fallbackRes.ok) {
+      return await fallbackRes.text();
+    }
+  } catch {
+    // Final error
+  }
+
+  throw new Error(`Hedef siteye (${urlObj.hostname}) bağlanılamadı. Lütfen ürün linkinin geçerli olduğundan emin olun.`);
 }
 
 export function parseProductHtml(html: string, targetUrl: string): ScrapedProduct {
@@ -199,7 +231,7 @@ export function parseProductHtml(html: string, targetUrl: string): ScrapedProduc
             const imgs = Array.isArray(item.image) ? item.image : [item.image];
             for (const img of imgs) {
               const src = typeof img === "object" ? img.url || img.contentUrl : img;
-              if (src && typeof src === "string") imagesSet.add(new URL(src, urlObj).toString());
+              if (src && typeof src === "string") imagesSet.add(cleanProxiedUrl(new URL(src, urlObj).toString(), urlObj.origin));
             }
           }
 
@@ -218,7 +250,7 @@ export function parseProductHtml(html: string, targetUrl: string): ScrapedProduc
   if (!description) description = $('meta[property="og:description"]').attr("content") || $('meta[name="description"]').attr("content") || "";
   
   const ogImage = $('meta[property="og:image"]').attr("content");
-  if (ogImage) imagesSet.add(new URL(ogImage, urlObj).toString());
+  if (ogImage) imagesSet.add(cleanProxiedUrl(new URL(ogImage, urlObj).toString(), urlObj.origin));
 
   if (!price) {
     const metaPrice = $('meta[property="product:price:amount"]').attr("content") || $('meta[name="price"]').attr("content");
@@ -253,7 +285,7 @@ export function parseProductHtml(html: string, targetUrl: string): ScrapedProduc
     const src = $(el).attr("data-zoom-image") || $(el).attr("data-large") || $(el).attr("data-src") || $(el).attr("src");
     if (src && !src.includes("data:image") && !src.includes("icon") && !src.includes("logo")) {
       try {
-        imagesSet.add(new URL(src, urlObj).toString());
+        imagesSet.add(cleanProxiedUrl(new URL(src, urlObj).toString(), urlObj.origin));
       } catch {}
     }
   });
