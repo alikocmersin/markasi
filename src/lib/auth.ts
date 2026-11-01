@@ -116,25 +116,31 @@ export async function getAdmin() {
 
 export function isSameOrigin(request: Request) {
   const origin = request.headers.get("origin");
-  if (!origin) return true;
+  if (!origin) {
+    const secFetchSite = request.headers.get("sec-fetch-site");
+    if (secFetchSite && secFetchSite !== "same-origin" && secFetchSite !== "same-site" && secFetchSite !== "none") {
+      return false;
+    }
+    return true;
+  }
   try {
     const originHost = new URL(origin).host.toLowerCase();
     const host = (request.headers.get("host") || "").toLowerCase();
     const forwardedHost = (request.headers.get("x-forwarded-host") || "").toLowerCase();
+    const requestHost = new URL(request.url).host.toLowerCase();
 
-    if (originHost === host) return true;
-    if (forwardedHost && (originHost === forwardedHost || forwardedHost.split(",")[0].trim() === originHost)) {
-      return true;
+    if (originHost === host || originHost === requestHost) return true;
+    if (forwardedHost) {
+      const firstForwarded = forwardedHost.split(",")[0].trim();
+      if (originHost === forwardedHost || originHost === firstForwarded) {
+        return true;
+      }
     }
-    // Allow tunnel and local development origins
+    // Allow local development and loopback origins
     if (
-      originHost.endsWith(".vercel.app") ||
-      originHost.endsWith(".vercel.app") ||
-      originHost.endsWith(".trycloudflare.com") ||
-      originHost.endsWith(".loca.lt") ||
-      originHost.endsWith(".lhr.life") ||
       originHost.startsWith("localhost") ||
-      originHost.startsWith("127.0.0.1")
+      originHost.startsWith("127.0.0.1") ||
+      originHost.startsWith("[::1]")
     ) {
       return true;
     }

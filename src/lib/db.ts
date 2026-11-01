@@ -558,6 +558,7 @@ function openDatabase() {
   const database = new Database(filename);
   database.pragma(isVercel ? "journal_mode = DELETE" : "journal_mode = WAL");
   database.pragma("foreign_keys = ON");
+  database.pragma("busy_timeout = 5000");
 
   // Core Base Tables
   database.exec(`

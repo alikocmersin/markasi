@@ -54,21 +54,36 @@ function extractOemCodes(text: string): string[] {
   return Array.from(cleanCodes).slice(0, 10);
 }
 
-export async function scrapeProductUrl(targetUrl: string): Promise<ScrapedProduct> {
+function validateScraperUrl(targetUrl: string): URL {
   let urlObj: URL;
   try {
     urlObj = new URL(targetUrl);
-    if (!["http:", "https:"].includes(urlObj.protocol)) {
-      throw new Error("Geçerli bir HTTP veya HTTPS linki girin.");
-    }
-    // SSRF protection for local network
-    const host = urlObj.hostname.toLowerCase();
-    if (host === "localhost" || host.startsWith("127.") || host.startsWith("192.168.") || host.startsWith("10.")) {
-      throw new Error("Yerel ağ adresleri taranamamaktadır.");
-    }
-  } catch (err) {
-    throw new Error(err instanceof Error ? err.message : "Geçersiz web adresi.");
+  } catch {
+    throw new Error("Geçersiz web adresi.");
   }
+  if (!["http:", "https:"].includes(urlObj.protocol)) {
+    throw new Error("Geçerli bir HTTP veya HTTPS linki girin.");
+  }
+  const host = urlObj.hostname.toLowerCase();
+  if (
+    host === "localhost" ||
+    host === "0.0.0.0" ||
+    host === "[::1]" ||
+    host === "metadata.google.internal" ||
+    host.endsWith(".localhost") ||
+    host.startsWith("127.") ||
+    host.startsWith("10.") ||
+    host.startsWith("192.168.") ||
+    host.startsWith("169.254.") ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(host)
+  ) {
+    throw new Error("Yerel veya iç ağ adresleri güvenlik nedeniyle taranamamaktadır.");
+  }
+  return urlObj;
+}
+
+export async function scrapeProductUrl(targetUrl: string): Promise<ScrapedProduct> {
+  const urlObj = validateScraperUrl(targetUrl);
 
   const response = await fetch(urlObj.toString(), {
     headers: {
@@ -252,19 +267,7 @@ export type ScrapedCategoryProduct = {
 };
 
 export async function scrapeCategoryUrl(categoryUrl: string): Promise<ScrapedCategoryProduct[]> {
-  let urlObj: URL;
-  try {
-    urlObj = new URL(categoryUrl);
-    if (!["http:", "https:"].includes(urlObj.protocol)) {
-      throw new Error("Geçerli bir HTTP veya HTTPS linki girin.");
-    }
-    const host = urlObj.hostname.toLowerCase();
-    if (host === "localhost" || host.startsWith("127.") || host.startsWith("192.168.") || host.startsWith("10.")) {
-      throw new Error("Yerel ağ adresleri taranamamaktadır.");
-    }
-  } catch (err) {
-    throw new Error(err instanceof Error ? err.message : "Geçersiz web adresi.");
-  }
+  const urlObj = validateScraperUrl(categoryUrl);
 
   const response = await fetch(urlObj.toString(), {
     headers: {

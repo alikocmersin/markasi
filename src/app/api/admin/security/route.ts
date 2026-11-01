@@ -13,6 +13,7 @@ import {
   updateAdminRole,
 } from "@/lib/db";
 import { readJsonObject } from "@/lib/request";
+import { syncCloudDatabase } from "@/lib/cloud-sync";
 
 export const dynamic = "force-dynamic";
 
@@ -91,6 +92,12 @@ export async function GET(request: Request) {
         "coupons",
         "orders",
         "order_items",
+        "product_bundles",
+        "bundle_items",
+        "returns",
+        "supplier_recourses",
+        "pay_links",
+        "member_vehicles",
       ];
 
       let sqlDump = `-- Markasi Otomotiv MySQL Dump\n-- Generated: ${new Date().toISOString()}\n-- Compatible with MySQL 5.7+, 8.0+, MariaDB, TiDB & phpMyAdmin\n\nSET NAMES utf8mb4;\nSET FOREIGN_KEY_CHECKS = 0;\n\n`;
@@ -165,6 +172,7 @@ export async function POST(request: Request) {
         "SNAPSHOT",
         `Snapshot geri yüklendi (${result.productsCount} ürün, ${result.categoriesCount} kategori, ${result.settingsCount} ayar).`
       );
+      void syncCloudDatabase().catch(() => {});
       return NextResponse.json(result);
     } catch (err: unknown) {
       const errorMsg = err instanceof Error ? err.message : "Snapshot geri yüklenirken hata oluştu.";
@@ -200,6 +208,8 @@ export async function POST(request: Request) {
         "DATABASE",
         `Veritabanı geri yüklendi (${check.count} ürün mevcut).`
       );
+
+      void syncCloudDatabase().catch(() => {});
 
       return NextResponse.json({
         success: true,
