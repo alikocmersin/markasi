@@ -28,6 +28,12 @@ const SYNC_TABLES = [
   "coupons",
   "orders",
   "order_items",
+  "product_bundles",
+  "bundle_items",
+  "returns",
+  "supplier_recourses",
+  "pay_links",
+  "member_vehicles",
 ];
 
 async function main() {
@@ -62,8 +68,8 @@ async function main() {
       \`slug\` VARCHAR(191) DEFAULT '',
       \`parent_id\` VARCHAR(191) DEFAULT NULL,
       \`sort_order\` INT DEFAULT 0,
-      \`icon\` TEXT,
-      \`banner\` TEXT,
+      \`icon\` LONGTEXT,
+      \`banner\` LONGTEXT,
       \`seo_title\` VARCHAR(255) DEFAULT '',
       \`seo_description\` TEXT,
       \`default_margin\` DECIMAL(5,2) DEFAULT 20.00,
@@ -119,7 +125,7 @@ async function main() {
     `CREATE TABLE IF NOT EXISTS product_images (
       \`id\` INT AUTO_INCREMENT PRIMARY KEY,
       \`product_id\` VARCHAR(191) NOT NULL,
-      \`image_url\` TEXT NOT NULL,
+      \`image_url\` LONGTEXT NOT NULL,
       \`sort_order\` INT DEFAULT 0,
       \`is_primary\` TINYINT DEFAULT 0,
       \`created_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -169,8 +175,8 @@ async function main() {
       \`id\` VARCHAR(191) PRIMARY KEY,
       \`title\` VARCHAR(255) NOT NULL,
       \`subtitle\` VARCHAR(255) DEFAULT '',
-      \`image_desktop\` TEXT NOT NULL,
-      \`image_mobile\` TEXT,
+      \`image_desktop\` LONGTEXT NOT NULL,
+      \`image_mobile\` LONGTEXT,
       \`link_url\` TEXT,
       \`button_text\` VARCHAR(100) DEFAULT '',
       \`position\` VARCHAR(100) DEFAULT 'hero_slider',
@@ -246,7 +252,7 @@ async function main() {
       \`status\` VARCHAR(50) NOT NULL DEFAULT 'Yeni',
       \`total\` INT NOT NULL,
       \`vin_number\` VARCHAR(100) DEFAULT '',
-      \`license_plate_photo\` TEXT,
+      \`license_plate_photo\` LONGTEXT,
       \`vin_status\` VARCHAR(50) DEFAULT 'Bekliyor',
       \`courier_company\` VARCHAR(100) DEFAULT '',
       \`tracking_code\` VARCHAR(100) DEFAULT '',
@@ -270,6 +276,79 @@ async function main() {
       \`code\` VARCHAR(191) NOT NULL,
       \`quantity\` INT NOT NULL,
       \`unit_price\` INT NOT NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`,
+
+    `CREATE TABLE IF NOT EXISTS product_bundles (
+      \`id\` VARCHAR(191) PRIMARY KEY,
+      \`name\` VARCHAR(255) NOT NULL,
+      \`slug\` VARCHAR(191) UNIQUE,
+      \`bundle_code\` VARCHAR(191) UNIQUE,
+      \`price\` INT NOT NULL,
+      \`discount_price\` INT DEFAULT 0,
+      \`description\` LONGTEXT,
+      \`image_url\` LONGTEXT,
+      \`active\` TINYINT DEFAULT 1,
+      \`created_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`,
+
+    `CREATE TABLE IF NOT EXISTS bundle_items (
+      \`id\` INT AUTO_INCREMENT PRIMARY KEY,
+      \`bundle_id\` VARCHAR(191) NOT NULL,
+      \`product_id\` VARCHAR(191) NOT NULL,
+      \`quantity\` INT NOT NULL DEFAULT 1
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`,
+
+    `CREATE TABLE IF NOT EXISTS returns (
+      \`id\` VARCHAR(191) PRIMARY KEY,
+      \`order_id\` VARCHAR(191) NOT NULL,
+      \`product_id\` VARCHAR(191) NOT NULL,
+      \`customer_name\` VARCHAR(191) NOT NULL,
+      \`reason\` VARCHAR(255) NOT NULL,
+      \`customer_note\` TEXT,
+      \`photo_url\` LONGTEXT,
+      \`status\` VARCHAR(50) DEFAULT 'Bekliyor',
+      \`refund_amount\` INT DEFAULT 0,
+      \`created_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`,
+
+    `CREATE TABLE IF NOT EXISTS supplier_recourses (
+      \`id\` VARCHAR(191) PRIMARY KEY,
+      \`return_id\` VARCHAR(191) DEFAULT NULL,
+      \`product_id\` VARCHAR(191) NOT NULL,
+      \`supplier\` VARCHAR(191) NOT NULL,
+      \`part_code\` VARCHAR(191) NOT NULL,
+      \`problem_description\` TEXT NOT NULL,
+      \`status\` VARCHAR(50) DEFAULT 'Tedarikçiye Gönderildi',
+      \`resolution_note\` TEXT,
+      \`created_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`,
+
+    `CREATE TABLE IF NOT EXISTS pay_links (
+      \`id\` VARCHAR(191) PRIMARY KEY,
+      \`customer_name\` VARCHAR(191) NOT NULL,
+      \`phone\` VARCHAR(50) NOT NULL,
+      \`email\` VARCHAR(191) DEFAULT '',
+      \`part_description\` TEXT NOT NULL,
+      \`amount\` INT NOT NULL,
+      \`status\` VARCHAR(50) DEFAULT 'Ödenmedi',
+      \`order_id\` VARCHAR(191) DEFAULT NULL,
+      \`created_by\` VARCHAR(191) DEFAULT '',
+      \`expires_at\` VARCHAR(50) DEFAULT NULL,
+      \`created_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`,
+
+    `CREATE TABLE IF NOT EXISTS member_vehicles (
+      \`id\` VARCHAR(191) PRIMARY KEY,
+      \`member_id\` VARCHAR(191) NOT NULL,
+      \`plate_number\` VARCHAR(50) NOT NULL,
+      \`brand\` VARCHAR(100) NOT NULL,
+      \`model\` VARCHAR(100) NOT NULL,
+      \`year\` VARCHAR(20) NOT NULL,
+      \`vin\` VARCHAR(100) DEFAULT '',
+      \`next_maintenance_date\` VARCHAR(50) DEFAULT '',
+      \`last_maintenance_date\` VARCHAR(50) DEFAULT '',
+      \`notes\` TEXT,
+      \`created_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`,
   ];
 

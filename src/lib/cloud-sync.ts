@@ -5,7 +5,7 @@ import { getTursoConfig, syncAllToTurso, pushToTurso, ensureTursoSynced } from "
 /**
  * Trigger background full sync to active cloud databases (MySQL and/or Turso).
  */
-export async function syncCloudDatabase(): Promise<void> {
+export async function syncCloudDatabase(tables?: string[]): Promise<void> {
   const mysqlConfig = getMysqlConfig();
   const tursoConfig = getTursoConfig();
 
@@ -80,3 +80,4 @@ export async function ensureCloudDatabaseSynced(): Promise<void> {
   const timeoutPromise = new Promise((resolve) => setTimeout(resolve, 3500));
   await Promise.race([Promise.all(promises), timeoutPromise]);
 }
+

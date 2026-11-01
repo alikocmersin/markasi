@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAdmin, isSameOrigin } from "@/lib/auth";
+import { syncCloudDatabase } from "@/lib/cloud-sync";
 import {
   getDatabase,
   listB2BGroups,
@@ -47,6 +48,7 @@ export async function PATCH(request: Request) {
 
   if (updated) {
     recordAuditLog(admin.email, "UPDATE_MEMBER_B2B", "Member", memberId, JSON.stringify(body));
+    await syncCloudDatabase(["members"]);
     return NextResponse.json({ success: true });
   }
 
@@ -86,6 +88,7 @@ export async function POST(request: Request) {
       .run(id, name, discountPercent, description, minOrderAmount);
 
     recordAuditLog(admin.email, "CREATE_B2B_GROUP", "B2BGroup", id, `${name} grubu oluşturuldu.`);
+    await syncCloudDatabase(["b2b_groups"]);
     return NextResponse.json({ success: true, id });
   }
 
@@ -100,6 +103,7 @@ export async function POST(request: Request) {
     const updated = updateMemberB2B(memberId, { creditBalanceDelta: amountDelta });
     if (updated) {
       recordAuditLog(admin.email, "CARI_TRANSACTION", "Member", memberId, `Bakiye değişimi: ${(amountDelta / 100).toFixed(2)} TL`);
+      await syncCloudDatabase(["members"]);
       return NextResponse.json({ success: true });
     }
     return NextResponse.json({ error: "Üye bulunamadı." }, { status: 404 });

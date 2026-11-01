@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAdmin, isSameOrigin } from "@/lib/auth";
+import { syncCloudDatabase } from "@/lib/cloud-sync";
 import {
   getCurrencyRates,
   getDatabase,
@@ -56,6 +57,7 @@ export async function PATCH(request: Request) {
       currency,
       `Yeni kur: 1 ${currency} = ${rate} TL. Endeksli ürünler güncellendi.`,
     );
+    await syncCloudDatabase(["currency_rates", "products"]);
     return NextResponse.json({ success: true, currency, rate });
   }
 
@@ -70,6 +72,7 @@ export async function PATCH(request: Request) {
         .prepare("UPDATE shipping_rules SET price = ?, free_shipping_threshold = ? WHERE id = ?")
         .run(price, threshold, id);
       recordAuditLog(admin.email, "UPDATE_SHIPPING_RULE", "Finance", String(id), `Kargo kuralı güncellendi.`);
+      await syncCloudDatabase(["shipping_rules"]);
       return NextResponse.json({ success: true });
     }
   }
@@ -82,6 +85,7 @@ export async function PATCH(request: Request) {
       getDatabase()
         .prepare("UPDATE pos_installments SET commission_rate = ? WHERE id = ?")
         .run(rate, id);
+      await syncCloudDatabase(["pos_installments"]);
       return NextResponse.json({ success: true });
     }
   }

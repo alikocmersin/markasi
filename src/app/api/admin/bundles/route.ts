@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAdmin, isSameOrigin } from "@/lib/auth";
 import { createBundle, listBundles, recordAuditLog } from "@/lib/db";
+import { syncCloudDatabase } from "@/lib/cloud-sync";
 import { readJsonObject } from "@/lib/request";
 
 export async function GET() {
@@ -40,6 +41,7 @@ export async function POST(request: Request) {
   });
 
   recordAuditLog(admin.email, "CREATE_BUNDLE", "Bundle", bundleId, `${name} paketi oluşturuldu.`);
+  await syncCloudDatabase(["products"]);
   return NextResponse.json({ success: true, bundleId }, { status: 201 });
 }
 

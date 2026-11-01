@@ -2,6 +2,7 @@ import { XMLParser, XMLValidator } from "fast-xml-parser";
 import { NextResponse } from "next/server";
 import { getAdmin, isSameOrigin } from "@/lib/auth";
 import { getDatabase } from "@/lib/db";
+import { syncCloudDatabase } from "@/lib/cloud-sync";
 
 const maximumFileBytes = 2 * 1024 * 1024;
 const fieldAliases = {
@@ -316,6 +317,7 @@ export async function POST(request: Request) {
       );
   });
   importFeed.immediate();
+  await syncCloudDatabase(["supplier_stock"]);
 
   return NextResponse.json(
     {

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAdmin, isSameOrigin } from "@/lib/auth";
+import { syncCloudDatabase } from "@/lib/cloud-sync";
 import {
   createPayLink,
   getDatabase,
@@ -93,6 +94,7 @@ export async function POST(request: Request) {
     });
 
     recordAuditLog(admin.email, "UPSERT_COUPON", "Coupon", code, `${code} kuponu kaydedildi.`);
+    await syncCloudDatabase(["coupons"]);
     return NextResponse.json({ success: true, id });
   }
 
