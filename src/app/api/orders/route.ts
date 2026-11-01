@@ -4,6 +4,7 @@ import { isSameOrigin } from "@/lib/auth";
 import { getMemberId } from "@/lib/member-auth";
 import { getDatabase } from "@/lib/db";
 import { readJsonObject } from "@/lib/request";
+import { syncCloudDatabase } from "@/lib/cloud-sync";
 
 const provincePlateCodes: Record<string, string> = {
   adana: "01", adiyaman: "02", afyonkarahisar: "03", agri: "04", amasya: "05",
@@ -271,5 +272,6 @@ export async function POST(request: Request) {
   if ("error" in result) {
     return NextResponse.json({ error: result.error }, { status: 409 });
   }
+  void syncCloudDatabase().catch(() => {});
   return NextResponse.json(result, { status: 201 });
 }

@@ -14,7 +14,7 @@ import {
   updateProductInline,
 } from "@/lib/db";
 import { readJsonObject } from "@/lib/request";
-import { pushToTurso, syncAllToTurso } from "@/lib/turso";
+import { syncCloudDatabase } from "@/lib/cloud-sync";
 
 export async function GET(request: Request) {
   const admin = await getAdmin();
@@ -257,7 +257,7 @@ export async function POST(request: Request) {
     })();
 
     recordAuditLog(admin.email, "CREATE_PRODUCT", "Product", productId, `${name} (${code}) oluşturuldu.`);
-    void syncAllToTurso().catch((err) => console.warn("[Turso Background Sync Warning]", err));
+    void syncCloudDatabase().catch((err) => console.warn("[Cloud Background Sync Warning]", err));
     return NextResponse.json({ success: true, id: productId }, { status: 201 });
   } catch (error) {
     if (error instanceof Error && error.message.includes("UNIQUE constraint failed: products.code")) {
@@ -369,7 +369,7 @@ export async function PATCH(request: Request) {
 
   if (updated) {
     recordAuditLog(admin.email, "INLINE_UPDATE_PRODUCT", "Product", productId, JSON.stringify(body));
-    void syncAllToTurso().catch((err) => console.warn("[Turso Background Sync Warning]", err));
+    void syncCloudDatabase().catch((err) => console.warn("[Cloud Background Sync Warning]", err));
     return NextResponse.json({ success: true });
   }
   return NextResponse.json({ error: "Ürün güncellenemedi." }, { status: 400 });
@@ -409,7 +409,7 @@ export async function PUT(request: Request) {
     "MULTIPLE",
     `%${percentageChange} değişim uygulandı (${affectedCount} ürün etkilendi).`,
   );
-  void syncAllToTurso().catch((err) => console.warn("[Turso Background Sync Warning]", err));
+  void syncCloudDatabase().catch((err) => console.warn("[Cloud Background Sync Warning]", err));
 
   return NextResponse.json({ success: true, affectedCount });
 }
@@ -439,8 +439,7 @@ export async function DELETE(request: Request) {
   const res = getDatabase().prepare("DELETE FROM products WHERE id = ?").run(id);
   if (res.changes > 0) {
     recordAuditLog(admin.email, "DELETE_PRODUCT", "Product", id, `Ürün silindi.`);
-    pushToTurso("DELETE FROM products WHERE id = ?", [id]);
-    void syncAllToTurso().catch((err) => console.warn("[Turso Background Sync Warning]", err));
+    void syncCloudDatabase().catch((err) => console.warn("[Cloud Background Sync Warning]", err));
     return NextResponse.json({ success: true });
   }
   return NextResponse.json({ error: "Ürün bulunamadı." }, { status: 404 });

@@ -10,7 +10,7 @@ import {
   upsertCategory,
 } from "@/lib/db";
 import { readJsonObject } from "@/lib/request";
-import { syncAllToTurso } from "@/lib/turso";
+import { syncCloudDatabase } from "@/lib/cloud-sync";
 
 export async function GET(request: Request) {
   const admin = await getAdmin();
@@ -74,7 +74,7 @@ export async function POST(request: Request) {
       `${name} kategorisi/düğümü güncellendi.`,
     );
 
-    void syncAllToTurso().catch((err) => console.warn("[Turso Sync Warning]", err));
+    void syncCloudDatabase().catch((err) => console.warn("[Cloud Sync Warning]", err));
 
     return NextResponse.json({ success: true, id: res.id });
   }
@@ -154,7 +154,7 @@ export async function DELETE(request: Request) {
     reassignToId ? `Silindi, ürünler ${reassignToId} kategorisine aktarıldı.` : "Silindi.",
   );
 
-  void syncAllToTurso().catch((err) => console.warn("[Turso Sync Warning]", err));
+  void syncCloudDatabase().catch((err) => console.warn("[Cloud Sync Warning]", err));
 
   return NextResponse.json({ success: true });
 }

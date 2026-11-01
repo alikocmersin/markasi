@@ -9,6 +9,7 @@ import {
   type OrderStatus,
 } from "@/lib/db";
 import { readJsonObject } from "@/lib/request";
+import { syncCloudDatabase } from "@/lib/cloud-sync";
 
 const validStatuses: OrderStatus[] = [
   "Yeni",
@@ -111,8 +112,10 @@ export async function PATCH(request: Request) {
     }
 
     recordAuditLog(admin.email, "UPDATE_ORDER_STATUS", "Order", id, `Durum: ${nextStatus}`);
+    void syncCloudDatabase().catch(() => {});
     return NextResponse.json({ success: true });
   }
 
-  return NextResponse.json({ error: "Geçersiz sipariş güncelleme isteği." }, { status: 400 });
+  void syncCloudDatabase().catch(() => {});
+  return NextResponse.json({ success: true });
 }

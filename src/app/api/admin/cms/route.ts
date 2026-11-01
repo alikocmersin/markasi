@@ -12,6 +12,7 @@ import {
   setSiteSetting,
 } from "@/lib/db";
 import { readJsonObject } from "@/lib/request";
+import { syncCloudDatabase } from "@/lib/cloud-sync";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -68,6 +69,7 @@ export async function PATCH(request: Request) {
       }
     }
     recordAuditLog(admin.email, "UPDATE_SITE_SETTINGS", "CMS", "GENERAL", "Site ayarları güncellendi.");
+    void syncCloudDatabase().catch(() => {});
     return NextResponse.json({ success: true });
   }
 
@@ -81,6 +83,7 @@ export async function PATCH(request: Request) {
       seoDescription: body.seoDescription ? String(body.seoDescription).trim() : undefined,
     });
     recordAuditLog(admin.email, "UPDATE_CMS_PAGE", "CMS", String(body.slug), `${body.title} sayfası güncellendi.`);
+    void syncCloudDatabase().catch(() => {});
     return NextResponse.json({ success: true });
   }
 
@@ -121,12 +124,14 @@ export async function PATCH(request: Request) {
       .run({ id, title, subtitle, imageDesktop, imageMobile, linkUrl, buttonText, position, sortOrder, active });
 
     recordAuditLog(admin.email, "UPSERT_SLIDER", "CMS", id, `Banner/Slider güncellendi: ${title}`);
+    void syncCloudDatabase().catch(() => {});
     return NextResponse.json({ success: true, id });
   }
 
   // Section 4: Delete Slider
   if (section === "delete-slider" && body.id) {
     getDatabase().prepare("DELETE FROM sliders_banners WHERE id = ?").run(String(body.id));
+    void syncCloudDatabase().catch(() => {});
     return NextResponse.json({ success: true });
   }
 

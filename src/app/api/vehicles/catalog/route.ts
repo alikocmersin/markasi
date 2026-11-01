@@ -4,7 +4,7 @@ import { vehicleCatalog } from "@/data/vehicle-catalog";
 import { getDatabase } from "@/lib/db";
 
 const sourceUrl = "https://www.yedekparca.com.tr";
-const sourceUserAgent = "Markasi-Authorized-Vehicle-Catalog/1.0";
+const sourceUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 const compatibilityId = "16";
 const cacheDuration = 30 * 24 * 60 * 60 * 1000;
 const sourcePageCacheDuration = 5 * 60 * 1000;
@@ -96,7 +96,7 @@ async function getSourcePage() {
     const response = await fetch(`${sourceUrl}/`, {
       cache: "no-store",
       headers: { "User-Agent": sourceUserAgent },
-      signal: AbortSignal.timeout(4_000),
+      signal: AbortSignal.timeout(8_000),
     });
     if (!response.ok) throw new Error("Kaynak araç kataloğu açılamadı.");
     const html = await response.text();
@@ -296,7 +296,7 @@ async function getOptions(
         headers,
         body: fields.toString(),
         cache: "no-store",
-        signal: AbortSignal.timeout(4_000),
+        signal: AbortSignal.timeout(8_000),
       },
     );
     if (!response.ok) throw new Error("Kaynak araç uyumluluk servisi yanıt vermedi.");

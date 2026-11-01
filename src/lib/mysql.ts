@@ -449,7 +449,20 @@ export async function pullAllFromMysql(
         db.transaction(() => {
           const stmt = db.prepare(insertSql);
           for (const row of list) {
-            const values = columns.map((c) => row[c] ?? null);
+            const values = columns.map((c) => {
+              const val = row[c];
+              if (val === null || val === undefined) return null;
+              if (val instanceof Date) {
+                return val.toISOString().replace("T", " ").replace(/\..*$/, "");
+              }
+              if (typeof val === "boolean") {
+                return val ? 1 : 0;
+              }
+              if (typeof val === "object" && !Buffer.isBuffer(val)) {
+                return JSON.stringify(val);
+              }
+              return val;
+            });
             stmt.run(...values);
           }
         })();
