@@ -6,6 +6,7 @@ import { copyFileSync, existsSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { createOpelDemoProducts } from "@/data/opel-demo-products";
 import { vehicleCatalog } from "@/data/vehicle-catalog";
+import completeVehicleModels from "@/data/complete-vehicle-models.json";
 
 export type SupplierStock = {
   supplier: string;
@@ -1186,21 +1187,23 @@ function openDatabase() {
     .prepare("INSERT OR IGNORE INTO app_settings (key, value) VALUES (?, ?)")
     .run("development_session_secret", randomBytes(32).toString("base64url"));
 
-  // Seed Vehicle Tree from catalog if empty
+  // Seed Vehicle Tree from complete catalog if empty or incomplete
   const vtCount = database.prepare("SELECT count(*) as c FROM categories WHERE is_vehicle_tree = 1").get() as { c: number };
-  if (vtCount.c === 0) {
+  if (vtCount.c < 500) {
     const insert = database.prepare(`
       INSERT OR IGNORE INTO categories (id, name, slug, parent_id, sort_order, default_margin, is_vehicle_tree, active)
       VALUES (?, ?, ?, ?, ?, 20.0, 1, 1)
     `);
     let sortOrder = 0;
-    for (const brand of vehicleCatalog) {
-      const brandId = `vt-${brand.label.toLowerCase().replace(/[^a-z0-9]/g, "-")}`;
-      insert.run(brandId, brand.label, brandId, null, sortOrder++);
+    for (const brand of Object.values(completeVehicleModels)) {
+      const brandSlug = brand.label.toLowerCase().replace(/[^a-z0-9]/g, "-").replace(/-+/g, "-");
+      const brandId = `vt-${brandSlug}`;
+      insert.run(brandId, brand.label, brandSlug, null, sortOrder++);
       let childOrder = 0;
       for (const model of brand.models) {
-        const modelId = `${brandId}-${model.label.toLowerCase().replace(/[^a-z0-9]/g, "-")}`;
-        insert.run(modelId, model.label, modelId, brandId, childOrder++);
+        const modelSlug = model.label.toLowerCase().replace(/[^a-z0-9]/g, "-").replace(/-+/g, "-");
+        const modelId = `${brandId}-${modelSlug}`;
+        insert.run(modelId, model.label, `${brandSlug}-${modelSlug}`, brandId, childOrder++);
       }
     }
   }

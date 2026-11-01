@@ -276,6 +276,46 @@ export const vehicleCatalog: VehicleBrand[] = [
         ["2.0 Diesel", 150, 163],
       ]),
     ]),
+    model("Epica", [
+      generation("KL1", "KL1 · Sedan (2006-2012)", 2006, 2012, sedan, [
+        ["2.0 D", 150],
+        ["2.0", 144],
+        ["2.5", 156],
+      ]),
+    ]),
+    model("Captiva", [
+      generation("C100", "C100 / C140 · SUV (2006-2018)", 2006, 2018, suv, [
+        ["2.0 D", 126, 150],
+        ["2.2 D", 163, 184],
+        ["2.4", 136, 167],
+      ]),
+    ]),
+    model("Lacetti", [
+      generation("J200", "J200 (2004-2013)", 2004, 2013, hatchSedan, [
+        ["1.4", 95],
+        ["1.6", 109],
+        ["2.0 D", 121],
+      ]),
+    ]),
+    model("Kalos", [
+      generation("T200", "T200 (2003-2008)", 2003, 2008, hatchSedan, [
+        ["1.2", 72],
+        ["1.4", 83, 94],
+      ]),
+    ]),
+    model("Spark", [
+      generation("M300", "M300 (2010-2015)", 2010, 2015, hatch, [
+        ["1.0", 68],
+        ["1.2", 82],
+      ]),
+    ]),
+    model("Trax", [
+      generation("U200", "U200 · SUV (2013-2022)", 2013, 2022, suv, [
+        ["1.4 Turbo", 140],
+        ["1.6", 115],
+        ["1.7 CDTI", 130],
+      ]),
+    ]),
   ]),
   brand("Citroën", [
     model("Berlingo", [

@@ -363,6 +363,8 @@ async function getError(response: Response) {
 
 const vehicleOptionMemoryCache = new Map<string, SourceVehicleOption[]>();
 
+let purgedStaleVehicleCache = false;
+
 async function getSourceVehicleOptions(
   sequence: number,
   selectedValues: string[],
@@ -372,7 +374,24 @@ async function getSourceVehicleOptions(
   selectedValues.forEach((value, index) =>
     params.set(`specs[${index + 1}]`, value),
   );
-  const cacheKey = `v_cat_${params.toString()}`;
+  const cacheKey = `v_cat_v6_${params.toString()}`;
+
+  // 0. Purge legacy browser vehicle cache once
+  if (typeof window !== "undefined" && !purgedStaleVehicleCache) {
+    purgedStaleVehicleCache = true;
+    try {
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < window.localStorage.length; i++) {
+        const k = window.localStorage.key(i);
+        if (k && k.startsWith("v_cat_") && !k.startsWith("v_cat_v6_")) {
+          keysToRemove.push(k);
+        }
+      }
+      for (const k of keysToRemove) {
+        window.localStorage.removeItem(k);
+      }
+    } catch {}
+  }
 
   // 1. In-memory RAM cache check (Instant 0ms)
   if (vehicleOptionMemoryCache.has(cacheKey)) {
@@ -395,10 +414,10 @@ async function getSourceVehicleOptions(
     }
   }
 
-  // 3. API request with force-cache
+  // 3. API request with no-store (instant & guarantees fresh options without HTTP caching stale models)
   try {
     const response = await fetch(`/api/vehicles/catalog?${params}`, {
-      cache: "force-cache",
+      cache: "no-store",
       signal,
     });
     if (!response.ok) return [];
